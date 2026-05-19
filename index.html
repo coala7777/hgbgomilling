@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>한기부고 CBT</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="watermark" aria-hidden="true">한기부고</div>
+
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">컴퓨터응용밀링기능사</p>
+      <h1>한기부고 CBT</h1>
+    </div>
+    <button class="icon-btn" id="calculatorToggle" type="button" title="계산기 열기" aria-label="계산기 열기">⌗</button>
+  </header>
+
+  <main>
+    <section class="screen active" id="loginScreen">
+      <div class="login-panel">
+        <p class="section-label">2014년 1회차 예제문제</p>
+        <h2>학번을 입력하고 시험을 시작하세요</h2>
+        <form id="loginForm">
+          <label for="studentId">학번</label>
+          <input id="studentId" name="studentId" inputmode="numeric" autocomplete="off" placeholder="예: 2301" required>
+          <button class="primary-btn" type="submit">시험 시작</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="screen" id="examScreen">
+      <div class="exam-status">
+        <div>
+          <span id="studentBadge"></span>
+          <strong id="questionTitle">1번</strong>
+        </div>
+        <div class="progress-wrap" aria-label="진행률">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <span id="answeredCount">0 / 60</span>
+      </div>
+
+      <article class="question-stage">
+        <img id="questionImage" alt="문제 이미지">
+      </article>
+
+      <nav class="choice-panel" aria-label="정답 선택">
+        <button class="choice-btn" type="button" data-choice="1">①</button>
+        <button class="choice-btn" type="button" data-choice="2">②</button>
+        <button class="choice-btn" type="button" data-choice="3">③</button>
+        <button class="choice-btn" type="button" data-choice="4">④</button>
+      </nav>
+
+      <div class="exam-actions">
+        <button class="secondary-btn" id="prevBtn" type="button">이전</button>
+        <button class="secondary-btn" id="nextBtn" type="button">다음</button>
+        <button class="primary-btn" id="submitBtn" type="button">채점하기</button>
+      </div>
+
+      <div class="question-map" id="questionMap" aria-label="문항 이동"></div>
+    </section>
+
+    <section class="screen" id="resultScreen">
+      <div class="result-head">
+        <p class="section-label">시험 결과</p>
+        <h2 id="scoreText"></h2>
+        <p id="resultMeta"></p>
+      </div>
+
+      <div class="result-actions">
+        <button class="primary-btn" id="restartBtn" type="button">다시 풀기</button>
+        <button class="secondary-btn" id="dashboardBtn" type="button">대시보드 보기</button>
+      </div>
+
+      <section>
+        <h3>오답노트</h3>
+        <div class="wrong-list" id="wrongList"></div>
+      </section>
+    </section>
+
+    <section class="screen" id="dashboardScreen">
+      <div class="dashboard-head">
+        <div>
+          <p class="section-label">누적 기록</p>
+          <h2>학번별 점수 대시보드</h2>
+        </div>
+        <button class="secondary-btn" id="backToLoginBtn" type="button">처음으로</button>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat">
+          <span>응시 수</span>
+          <strong id="totalAttempts">0</strong>
+        </div>
+        <div class="stat">
+          <span>평균 점수</span>
+          <strong id="averageScore">0</strong>
+        </div>
+        <div class="stat">
+          <span>최고 점수</span>
+          <strong id="bestScore">0</strong>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>학번</th>
+              <th>응시</th>
+              <th>최근</th>
+              <th>최고</th>
+              <th>평균</th>
+            </tr>
+          </thead>
+          <tbody id="studentRows"></tbody>
+        </table>
+      </div>
+
+      <section>
+        <h3>많이 틀린 문항</h3>
+        <div class="miss-dashboard" id="missDashboard"></div>
+      </section>
+    </section>
+  </main>
+
+  <aside class="calculator" id="calculator" aria-label="계산기">
+    <div class="calc-head">
+      <strong>계산기</strong>
+      <button class="small-btn" id="calcClose" type="button" aria-label="계산기 닫기">×</button>
+    </div>
+    <input id="calcDisplay" readonly value="0" aria-label="계산 결과">
+    <div class="calc-grid">
+      <button type="button" data-calc="C">C</button>
+      <button type="button" data-calc="back">⌫</button>
+      <button type="button" data-calc="%">%</button>
+      <button type="button" data-calc="/">÷</button>
+      <button type="button" data-calc="7">7</button>
+      <button type="button" data-calc="8">8</button>
+      <button type="button" data-calc="9">9</button>
+      <button type="button" data-calc="*">×</button>
+      <button type="button" data-calc="4">4</button>
+      <button type="button" data-calc="5">5</button>
+      <button type="button" data-calc="6">6</button>
+      <button type="button" data-calc="-">−</button>
+      <button type="button" data-calc="1">1</button>
+      <button type="button" data-calc="2">2</button>
+      <button type="button" data-calc="3">3</button>
+      <button type="button" data-calc="+">+</button>
+      <button type="button" data-calc="0">0</button>
+      <button type="button" data-calc=".">.</button>
+      <button class="equals" type="button" data-calc="=">=</button>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
