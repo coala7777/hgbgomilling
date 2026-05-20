@@ -7,36 +7,24 @@ const EXAMS = {
     title: "2014년 1회차",
     folder: "2014_1",
     answers: [
-      1, 4, 1, 4, 2,
-      3, 3, 2, 4, 2,
-      2, 1, 1, 1, 2,
-      4, 2, 1, 3, 4,
-      2, 2, 3, 1, 2,
-      1, 4, 3, 1, 3,
-      1, 3, 4, 3, 4,
-      2, 2, 4, 1, 2,
-      3, 2, 1, 1, 4,
-      2, 1, 1, 3, 3,
-      2, 2, 1, 1, 3,
-      4, 4, 3, 1, 4,
+      1, 4, 1, 4, 2, 3, 3, 2, 4, 2,
+      2, 1, 1, 1, 2, 4, 2, 1, 3, 4,
+      2, 2, 3, 1, 2, 1, 4, 3, 1, 3,
+      1, 3, 4, 3, 4, 2, 2, 4, 1, 2,
+      3, 2, 1, 1, 4, 2, 1, 1, 3, 3,
+      2, 2, 1, 1, 3, 4, 4, 3, 1, 4,
     ],
   },
   "2014_2": {
     title: "2014년 2회차",
     folder: "2014_2",
     answers: [
-      4, 4, 2, 2, 1,
-      4, 4, 4, 3, 1,
-      4, 4, 2, 3, 4,
-      4, 4, 1, 4, 3,
-      2, 1, 2, 1, 1,
-      2, 1, 1, 4, 4,
-      1, 1, 3, 3, 2,
-      3, 3, 1, 4, 4,
-      1, 2, 1, 3, 2,
-      4, 1, 3, 2, 1,
-      2, 3, 3, 2, 2,
-      4, 4, 4, 1, 1,
+      4, 4, 2, 2, 1, 4, 4, 4, 3, 1,
+      4, 4, 2, 3, 4, 4, 4, 1, 4, 3,
+      2, 1, 2, 1, 1, 2, 1, 1, 4, 4,
+      1, 1, 3, 3, 2, 3, 3, 1, 4, 4,
+      1, 2, 1, 3, 2, 4, 1, 3, 2, 1,
+      2, 3, 3, 2, 2, 4, 4, 4, 1, 1,
     ],
   },
 };
@@ -48,7 +36,6 @@ const USERS = {
 for (let id = 1101; id <= 1121; id += 1) {
   USERS[String(id)] = { password: String(id), role: "student", name: String(id) };
 }
-
 for (let id = 1201; id <= 1221; id += 1) {
   USERS[String(id)] = { password: String(id), role: "student", name: String(id) };
 }
@@ -73,6 +60,11 @@ const screens = {
   result: $("#resultScreen"),
   dashboard: $("#dashboardScreen"),
 };
+
+const supabaseSettings = window.HGBGO_SUPABASE || {};
+const supabaseClient = window.supabase && supabaseSettings.url && supabaseSettings.anonKey
+  ? window.supabase.createClient(supabaseSettings.url, supabaseSettings.anonKey)
+  : null;
 
 function showScreen(name) {
   Object.values(screens).forEach((screen) => screen.classList.remove("active"));
@@ -112,36 +104,105 @@ function writeStore(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-function loadAttempts() {
-  return readStore(ATTEMPTS_KEY);
+function normalizeAttempt(row) {
+  return {
+    id: row.id,
+    examId: row.exam_id ?? row.examId,
+    examTitle: row.exam_title ?? row.examTitle,
+    studentId: row.student_id ?? row.studentId,
+    startedAt: row.started_at ?? row.startedAt,
+    submittedAt: row.submitted_at ?? row.submittedAt,
+    correctCount: row.correct_count ?? row.correctCount,
+    score: row.score,
+    items: row.items || [],
+  };
 }
 
-function saveAttempts(attempts) {
-  writeStore(ATTEMPTS_KEY, attempts);
+function normalizeAccess(row) {
+  return {
+    userId: row.user_id ?? row.userId,
+    role: row.role,
+    at: row.accessed_at ?? row.at,
+  };
 }
 
-function loadAccessLog() {
-  return readStore(ACCESS_KEY);
+async function loadAttempts() {
+  if (!supabaseClient) return readStore(ATTEMPTS_KEY);
+  const { data, error } = await supabaseClient
+    .from("cbt_attempts")
+    .select("*")
+    .order("submitted_at", { ascending: false });
+  if (error) {
+    console.warn("Supabase attempts load failed", error);
+    return readStore(ATTEMPTS_KEY);
+  }
+  return data.map(normalizeAttempt);
 }
 
-function recordAccess(user) {
-  const logs = loadAccessLog();
-  logs.push({
-    userId: user.id,
-    role: user.role,
-    at: new Date().toISOString(),
+async function saveAttempt(result) {
+  if (!supabaseClient) {
+    const attempts = readStore(ATTEMPTS_KEY);
+    attempts.push(result);
+    writeStore(ATTEMPTS_KEY, attempts);
+    return;
+  }
+
+  const { error } = await supabaseClient.from("cbt_attempts").insert({
+    exam_id: result.examId,
+    exam_title: result.examTitle,
+    student_id: result.studentId,
+    started_at: result.startedAt,
+    submitted_at: result.submittedAt,
+    correct_count: result.correctCount,
+    score: result.score,
+    items: result.items,
   });
-  writeStore(ACCESS_KEY, logs.slice(-2000));
+  if (error) {
+    console.warn("Supabase attempt save failed", error);
+    const attempts = readStore(ATTEMPTS_KEY);
+    attempts.push(result);
+    writeStore(ATTEMPTS_KEY, attempts);
+  }
 }
 
-function renderExamSelect() {
+async function loadAccessLog() {
+  if (!supabaseClient) return readStore(ACCESS_KEY);
+  const { data, error } = await supabaseClient
+    .from("cbt_access_logs")
+    .select("*")
+    .order("accessed_at", { ascending: false });
+  if (error) {
+    console.warn("Supabase access load failed", error);
+    return readStore(ACCESS_KEY);
+  }
+  return data.map(normalizeAccess);
+}
+
+async function recordAccess(user) {
+  if (!supabaseClient) {
+    const logs = readStore(ACCESS_KEY);
+    logs.push({ userId: user.id, role: user.role, at: new Date().toISOString() });
+    writeStore(ACCESS_KEY, logs.slice(-2000));
+    return;
+  }
+
+  const { error } = await supabaseClient.from("cbt_access_logs").insert({
+    user_id: user.id,
+    role: user.role,
+    accessed_at: new Date().toISOString(),
+  });
+  if (error) console.warn("Supabase access save failed", error);
+}
+
+async function renderExamSelect() {
   $("#welcomeText").textContent = `${state.user.name}님, 응시할 문제를 선택하세요`;
   const list = $("#examList");
   list.innerHTML = "";
+  const allAttempts = await loadAttempts();
 
   Object.entries(EXAMS).forEach(([examId, exam]) => {
-    const attempts = loadAttempts().filter((attempt) => attempt.studentId === state.user.id && attempt.examId === examId);
-    const latest = attempts[attempts.length - 1];
+    const attempts = allAttempts.filter((attempt) => attempt.studentId === state.user.id && attempt.examId === examId);
+    const latest = attempts[0];
     const card = document.createElement("article");
     card.className = "exam-card";
     card.innerHTML = `
@@ -208,16 +269,10 @@ function startExam(examId) {
 }
 
 function scoreExam() {
-  const answers = currentExam().answers;
-  const items = answers.map((answer, index) => {
+  const items = currentExam().answers.map((answer, index) => {
     const qno = index + 1;
     const selected = state.selections[index];
-    return {
-      qno,
-      answer,
-      selected,
-      correct: selected === answer,
-    };
+    return { qno, answer, selected, correct: selected === answer };
   });
   const correctCount = items.filter((item) => item.correct).length;
   return {
@@ -233,7 +288,7 @@ function scoreExam() {
   };
 }
 
-function submitExam() {
+async function submitExam() {
   const unanswered = state.selections
     .map((choice, index) => (choice ? null : index + 1))
     .filter(Boolean);
@@ -243,9 +298,7 @@ function submitExam() {
     return;
   }
   const result = scoreExam();
-  const attempts = loadAttempts();
-  attempts.push(result);
-  saveAttempts(attempts);
+  await saveAttempt(result);
   state.lastResult = result;
   renderResult(result);
   showScreen("result");
@@ -279,24 +332,23 @@ function renderResult(result) {
   });
 }
 
-function renderDashboard() {
-  const allAttempts = loadAttempts();
+async function renderDashboard() {
+  const allAttempts = await loadAttempts();
   const attempts = state.user?.role === "teacher"
     ? allAttempts
     : allAttempts.filter((attempt) => attempt.studentId === state.user.id);
   const todayAttempts = attempts.filter((attempt) => isToday(attempt.submittedAt));
   const dashboardAttempts = state.user?.role === "teacher" ? todayAttempts : attempts;
-  const total = dashboardAttempts.length;
   const scores = dashboardAttempts.map((attempt) => attempt.score);
 
-  const accessLog = loadAccessLog();
+  const accessLog = await loadAccessLog();
   const studentAccessLog = accessLog.filter((log) => log.role === "student");
   const todayVisitorCount = new Set(studentAccessLog.filter((log) => isToday(log.at)).map((log) => log.userId)).size;
   const totalVisitorCount = new Set(studentAccessLog.map((log) => log.userId)).size;
 
-  $("#totalAttempts").textContent = String(total);
-  $("#averageScore").textContent = total ? String(Math.round(scores.reduce((a, b) => a + b, 0) / total)) : "0";
-  $("#bestScore").textContent = total ? String(Math.max(...scores)) : "0";
+  $("#totalAttempts").textContent = String(dashboardAttempts.length);
+  $("#averageScore").textContent = scores.length ? String(Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)) : "0";
+  $("#bestScore").textContent = scores.length ? String(Math.max(...scores)) : "0";
   $("#todayVisitors").textContent = String(todayVisitorCount);
   $("#totalVisitors").textContent = String(totalVisitorCount);
 
@@ -326,10 +378,7 @@ function renderTodayScoreRows(attempts) {
       `;
       rows.appendChild(tr);
     });
-
-  if (!attempts.length) {
-    rows.innerHTML = '<tr><td colspan="5">오늘 응시 기록이 없습니다.</td></tr>';
-  }
+  if (!attempts.length) rows.innerHTML = '<tr><td colspan="5">오늘 응시 기록이 없습니다.</td></tr>';
 }
 
 function renderStudentSummaryRows(attempts) {
@@ -343,24 +392,19 @@ function renderStudentSummaryRows(attempts) {
 
   const rows = $("#studentRows");
   rows.innerHTML = "";
-  [...byStudentExam.entries()]
-    .sort(([a], [b]) => a.localeCompare(b, "ko"))
-    .forEach(([_key, list]) => {
-      const latest = list[list.length - 1];
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${latest.examTitle}</td>
-        <td>${latest.studentId}</td>
-        <td>${latest.score}</td>
-        <td>${latest.correctCount}/${QUESTION_COUNT}</td>
-        <td>${new Date(latest.submittedAt).toLocaleString()}</td>
-      `;
-      rows.appendChild(tr);
-    });
-
-  if (!byStudentExam.size) {
-    rows.innerHTML = '<tr><td colspan="5">아직 기록이 없습니다.</td></tr>';
-  }
+  [...byStudentExam.entries()].forEach(([_key, list]) => {
+    const latest = list[0];
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${latest.examTitle}</td>
+      <td>${latest.studentId}</td>
+      <td>${latest.score}</td>
+      <td>${latest.correctCount}/${QUESTION_COUNT}</td>
+      <td>${new Date(latest.submittedAt).toLocaleString()}</td>
+    `;
+    rows.appendChild(tr);
+  });
+  if (!byStudentExam.size) rows.innerHTML = '<tr><td colspan="5">아직 기록이 없습니다.</td></tr>';
 }
 
 function renderMissDashboard(attempts) {
@@ -408,7 +452,7 @@ function renderMissDashboard(attempts) {
   });
 }
 
-function login(id, password) {
+async function login(id, password) {
   const user = USERS[id];
   if (!user || user.password !== password) {
     $("#loginMessage").textContent = "아이디 또는 비밀번호가 맞지 않습니다.";
@@ -416,14 +460,14 @@ function login(id, password) {
   }
   state.user = { ...user, id };
   $("#loginMessage").textContent = "";
-  recordAccess(state.user);
+  await recordAccess(state.user);
   if (user.role === "teacher") {
     state.dashboardReturn = "login";
-    renderDashboard();
+    await renderDashboard();
     showScreen("dashboard");
     return;
   }
-  renderExamSelect();
+  await renderExamSelect();
   showScreen("examSelect");
 }
 
@@ -478,9 +522,9 @@ function setupCalculator() {
   });
 }
 
-$("#loginForm").addEventListener("submit", (event) => {
+$("#loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  login($("#loginId").value.trim(), $("#loginPw").value.trim());
+  await login($("#loginId").value.trim(), $("#loginPw").value.trim());
 });
 
 $("#logoutBtn").addEventListener("click", logout);
@@ -505,22 +549,22 @@ $("#nextBtn").addEventListener("click", () => {
 
 $("#submitBtn").addEventListener("click", submitExam);
 $("#retryBtn").addEventListener("click", () => startExam(state.currentExamId));
-$("#chooseExamBtn").addEventListener("click", () => {
-  renderExamSelect();
+$("#chooseExamBtn").addEventListener("click", async () => {
+  await renderExamSelect();
   showScreen("examSelect");
 });
-$("#dashboardBtn").addEventListener("click", () => {
+$("#dashboardBtn").addEventListener("click", async () => {
   state.dashboardReturn = "result";
-  renderDashboard();
+  await renderDashboard();
   showScreen("dashboard");
 });
-$("#backFromDashboardBtn").addEventListener("click", () => {
+$("#backFromDashboardBtn").addEventListener("click", async () => {
   if (state.user?.role === "teacher" || state.dashboardReturn === "login") {
     logout();
   } else if (state.dashboardReturn === "result" && state.lastResult) {
     showScreen("result");
   } else {
-    renderExamSelect();
+    await renderExamSelect();
     showScreen("examSelect");
   }
 });

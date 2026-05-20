@@ -35,4 +35,17 @@ GitHub 저장소 루트에 이 파일들이 바로 올라가 있다면:
 
 ## 현재 저장 방식
 
-점수 기록은 브라우저 `localStorage`에 저장됩니다. 여러 학생의 점수를 한 교사용 대시보드로 모으려면 Firebase/Firestore 연동이 필요합니다.
+Supabase 설정이 되어 있으면 점수 기록, 접속 기록, 오답 통계가 Supabase에 저장됩니다.
+
+`supabase-config.js`에 Supabase 프로젝트 값을 넣으세요.
+
+```js
+window.HGBGO_SUPABASE = {
+  url: "https://YOUR_PROJECT_ID.supabase.co",
+  anonKey: "YOUR_SUPABASE_ANON_KEY",
+};
+```
+
+Supabase SQL Editor에서 `supabase/schema.sql` 내용을 한 번 실행하면 필요한 테이블이 만들어집니다.
+
+설정값이 비어 있으면 개발 확인용으로 브라우저 `localStorage`에 저장됩니다.
