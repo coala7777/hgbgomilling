@@ -157,6 +157,14 @@ function startOfTodayIso() {
   return date.toISOString();
 }
 
+function supabaseFailureMessage(error, label) {
+  const detail = error?.message || "network request failed";
+  if (detail.toLowerCase().includes("failed to fetch")) {
+    return `${label} 실패: Supabase 주소에 연결하지 못했습니다. 프로젝트 URL 또는 publishable key를 확인하세요.`;
+  }
+  return `${label} 실패: ${detail}`;
+}
+
 async function loadAttempts(options = {}) {
   const { since, limit = 500 } = options;
   if (!supabaseClient) {
@@ -175,7 +183,7 @@ async function loadAttempts(options = {}) {
 
   if (error) {
     console.warn("Supabase attempts load failed", error);
-    state.dataStatus = `응시 기록 조회 실패: ${error.message}`;
+    state.dataStatus = supabaseFailureMessage(error, "응시 기록 조회");
     return readStore(ATTEMPTS_KEY);
   }
   state.dataStatus = "";
@@ -226,7 +234,7 @@ async function loadAccessLog(options = {}) {
 
   if (error) {
     console.warn("Supabase access load failed", error);
-    state.dataStatus = state.dataStatus || `접속 기록 조회 실패: ${error.message}`;
+    state.dataStatus = state.dataStatus || supabaseFailureMessage(error, "접속 기록 조회");
     return readStore(ACCESS_KEY);
   }
   return data.map(normalizeAccess);
