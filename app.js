@@ -72,6 +72,7 @@ const state = {
   startedAt: null,
   lastResult: null,
   dashboardReturn: "examSelect",
+  dataStatus: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -150,16 +151,34 @@ function normalizeAccess(row) {
   };
 }
 
-async function loadAttempts() {
-  if (!supabaseClient) return readStore(ATTEMPTS_KEY);
-  const { data, error } = await supabaseClient
+function startOfTodayIso() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date.toISOString();
+}
+
+async function loadAttempts(options = {}) {
+  const { since, limit = 500 } = options;
+  if (!supabaseClient) {
+    let rows = readStore(ATTEMPTS_KEY).sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    if (since) rows = rows.filter((row) => new Date(row.submittedAt) >= new Date(since));
+    return rows.slice(0, limit);
+  }
+
+  let query = supabaseClient
     .from("cbt_attempts")
     .select("*")
-    .order("submitted_at", { ascending: false });
+    .order("submitted_at", { ascending: false })
+    .limit(limit);
+  if (since) query = query.gte("submitted_at", since);
+  const { data, error } = await query;
+
   if (error) {
     console.warn("Supabase attempts load failed", error);
+    state.dataStatus = `응시 기록 조회 실패: ${error.message}`;
     return readStore(ATTEMPTS_KEY);
   }
+  state.dataStatus = "";
   return data.map(normalizeAttempt);
 }
 
@@ -189,14 +208,25 @@ async function saveAttempt(result) {
   }
 }
 
-async function loadAccessLog() {
-  if (!supabaseClient) return readStore(ACCESS_KEY);
-  const { data, error } = await supabaseClient
+async function loadAccessLog(options = {}) {
+  const { since, limit = 2000 } = options;
+  if (!supabaseClient) {
+    let rows = readStore(ACCESS_KEY).sort((a, b) => new Date(b.at) - new Date(a.at));
+    if (since) rows = rows.filter((row) => new Date(row.at) >= new Date(since));
+    return rows.slice(0, limit);
+  }
+
+  let query = supabaseClient
     .from("cbt_access_logs")
     .select("*")
-    .order("accessed_at", { ascending: false });
+    .order("accessed_at", { ascending: false })
+    .limit(limit);
+  if (since) query = query.gte("accessed_at", since);
+  const { data, error } = await query;
+
   if (error) {
     console.warn("Supabase access load failed", error);
+    state.dataStatus = state.dataStatus || `접속 기록 조회 실패: ${error.message}`;
     return readStore(ACCESS_KEY);
   }
   return data.map(normalizeAccess);
@@ -222,7 +252,7 @@ async function renderExamSelect() {
   $("#welcomeText").textContent = `${state.user.name}님, 응시할 문제를 선택하세요`;
   const list = $("#examList");
   list.innerHTML = "";
-  const allAttempts = await loadAttempts();
+  const allAttempts = await loadAttempts({ limit: 500 });
 
   Object.entries(EXAMS).forEach(([examId, exam]) => {
     const attempts = allAttempts.filter((attempt) => attempt.studentId === state.user.id && attempt.examId === examId);
@@ -357,31 +387,40 @@ function renderResult(result) {
 }
 
 async function renderDashboard() {
-  const allAttempts = await loadAttempts();
-  const attempts = state.user?.role === "teacher"
-    ? allAttempts
-    : allAttempts.filter((attempt) => attempt.studentId === state.user.id);
-  const todayAttempts = attempts.filter((attempt) => isToday(attempt.submittedAt));
-  const dashboardAttempts = state.user?.role === "teacher" ? todayAttempts : attempts;
+  state.dataStatus = "";
+  const todayStart = startOfTodayIso();
+  const todayAllAttempts = await loadAttempts({ since: todayStart, limit: 300 });
+  const recentAllAttempts = await loadAttempts({ limit: 500 });
+  const todayAttempts = state.user?.role === "teacher"
+    ? todayAllAttempts
+    : todayAllAttempts.filter((attempt) => attempt.studentId === state.user.id);
+  const recentAttempts = state.user?.role === "teacher"
+    ? recentAllAttempts
+    : recentAllAttempts.filter((attempt) => attempt.studentId === state.user.id);
+  const dashboardAttempts = state.user?.role === "teacher" ? todayAttempts : recentAttempts;
   const scores = dashboardAttempts.map((attempt) => attempt.score);
 
-  const accessLog = await loadAccessLog();
-  const studentAccessLog = accessLog.filter((log) => log.role === "student");
-  const todayVisitorCount = new Set(studentAccessLog.filter((log) => isToday(log.at)).map((log) => log.userId)).size;
-  const totalVisitorCount = new Set(studentAccessLog.map((log) => log.userId)).size;
+  const todayAccessLog = await loadAccessLog({ since: todayStart, limit: 1000 });
+  const recentAccessLog = await loadAccessLog({ limit: 5000 });
+  const todayVisitorCount = new Set(todayAccessLog.filter((log) => log.role === "student").map((log) => log.userId)).size;
+  const totalVisitorCount = new Set(recentAccessLog.filter((log) => log.role === "student").map((log) => log.userId)).size;
 
   $("#totalAttempts").textContent = String(dashboardAttempts.length);
   $("#averageScore").textContent = scores.length ? String(Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)) : "0";
   $("#bestScore").textContent = scores.length ? String(Math.max(...scores)) : "0";
   $("#todayVisitors").textContent = String(todayVisitorCount);
   $("#totalVisitors").textContent = String(totalVisitorCount);
+  const statusBox = $("#dashboardStatus");
+  if (statusBox) {
+    statusBox.textContent = state.dataStatus || (supabaseClient ? "Supabase 연결됨" : "로컬 저장 모드");
+  }
 
   if (state.user?.role === "teacher") {
     renderTodayScoreRows(todayAttempts);
-    renderMissDashboard(attempts);
+    renderMissDashboard(recentAttempts);
   } else {
-    renderStudentSummaryRows(attempts);
-    renderMissDashboard(attempts);
+    renderStudentSummaryRows(recentAttempts);
+    renderMissDashboard(recentAttempts);
   }
 }
 

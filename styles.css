@@ -431,6 +431,13 @@ input {
   font-size: 28px;
 }
 
+.dashboard-status {
+  margin: -4px 0 22px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
