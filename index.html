@@ -98,42 +98,52 @@
     <section class="screen" id="dashboardScreen">
       <div class="dashboard-head">
         <div>
-          <p class="section-label">누적 기록</p>
-          <h2>점수 대시보드</h2>
+          <p class="section-label">교사용 대시보드</p>
+          <h2>오늘 학생 현황</h2>
         </div>
         <button class="secondary-btn" id="backFromDashboardBtn" type="button">돌아가기</button>
       </div>
 
-      <div class="stats-grid">
+      <div class="stats-grid teacher-stats">
         <div class="stat">
-          <span>응시 수</span>
+          <span>오늘 응시</span>
           <strong id="totalAttempts">0</strong>
         </div>
         <div class="stat">
-          <span>평균 점수</span>
+          <span>오늘 평균</span>
           <strong id="averageScore">0</strong>
         </div>
         <div class="stat">
-          <span>최고 점수</span>
+          <span>오늘 최고</span>
           <strong id="bestScore">0</strong>
+        </div>
+        <div class="stat">
+          <span>오늘 접속자</span>
+          <strong id="todayVisitors">0</strong>
+        </div>
+        <div class="stat">
+          <span>누적 접속자</span>
+          <strong id="totalVisitors">0</strong>
         </div>
       </div>
 
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>회차</th>
-              <th>학번</th>
-              <th>응시</th>
-              <th>최근</th>
-              <th>최고</th>
-              <th>평균</th>
-            </tr>
-          </thead>
-          <tbody id="studentRows"></tbody>
-        </table>
-      </div>
+      <section>
+        <h3>오늘 점수현황</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>회차</th>
+                <th>학번</th>
+                <th>점수</th>
+                <th>정답수</th>
+                <th>제출시간</th>
+              </tr>
+            </thead>
+            <tbody id="studentRows"></tbody>
+          </table>
+        </div>
+      </section>
 
       <section>
         <h3>많이 틀린 문항</h3>

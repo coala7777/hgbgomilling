@@ -1,5 +1,6 @@
 const QUESTION_COUNT = 60;
-const STORAGE_KEY = "hankibu_cbt_attempts_v2";
+const ATTEMPTS_KEY = "hankibu_cbt_attempts_v3";
+const ACCESS_KEY = "hankibu_cbt_access_v1";
 
 const EXAMS = {
   "2014_1": {
@@ -79,6 +80,17 @@ function showScreen(name) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function todayKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function isToday(isoString) {
+  return isoString && todayKey(new Date(isoString)) === todayKey();
+}
+
 function currentExam() {
   return EXAMS[state.currentExamId];
 }
@@ -88,16 +100,38 @@ function questionImagePath(qno, examId = state.currentExamId) {
   return `assets/exams/${exam.folder}/${qno}.png`;
 }
 
-function loadAttempts() {
+function readStore(key) {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    return JSON.parse(localStorage.getItem(key)) || [];
   } catch {
     return [];
   }
 }
 
+function writeStore(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function loadAttempts() {
+  return readStore(ATTEMPTS_KEY);
+}
+
 function saveAttempts(attempts) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(attempts));
+  writeStore(ATTEMPTS_KEY, attempts);
+}
+
+function loadAccessLog() {
+  return readStore(ACCESS_KEY);
+}
+
+function recordAccess(user) {
+  const logs = loadAccessLog();
+  logs.push({
+    userId: user.id,
+    role: user.role,
+    at: new Date().toISOString(),
+  });
+  writeStore(ACCESS_KEY, logs.slice(-2000));
 }
 
 function renderExamSelect() {
@@ -250,12 +284,55 @@ function renderDashboard() {
   const attempts = state.user?.role === "teacher"
     ? allAttempts
     : allAttempts.filter((attempt) => attempt.studentId === state.user.id);
-  const total = attempts.length;
-  const scores = attempts.map((attempt) => attempt.score);
+  const todayAttempts = attempts.filter((attempt) => isToday(attempt.submittedAt));
+  const dashboardAttempts = state.user?.role === "teacher" ? todayAttempts : attempts;
+  const total = dashboardAttempts.length;
+  const scores = dashboardAttempts.map((attempt) => attempt.score);
+
+  const accessLog = loadAccessLog();
+  const studentAccessLog = accessLog.filter((log) => log.role === "student");
+  const todayVisitorCount = new Set(studentAccessLog.filter((log) => isToday(log.at)).map((log) => log.userId)).size;
+  const totalVisitorCount = new Set(studentAccessLog.map((log) => log.userId)).size;
+
   $("#totalAttempts").textContent = String(total);
   $("#averageScore").textContent = total ? String(Math.round(scores.reduce((a, b) => a + b, 0) / total)) : "0";
   $("#bestScore").textContent = total ? String(Math.max(...scores)) : "0";
+  $("#todayVisitors").textContent = String(todayVisitorCount);
+  $("#totalVisitors").textContent = String(totalVisitorCount);
 
+  if (state.user?.role === "teacher") {
+    renderTodayScoreRows(todayAttempts);
+    renderMissDashboard(attempts);
+  } else {
+    renderStudentSummaryRows(attempts);
+    renderMissDashboard(attempts);
+  }
+}
+
+function renderTodayScoreRows(attempts) {
+  const rows = $("#studentRows");
+  rows.innerHTML = "";
+  attempts
+    .slice()
+    .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+    .forEach((attempt) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${attempt.examTitle}</td>
+        <td>${attempt.studentId}</td>
+        <td>${attempt.score}</td>
+        <td>${attempt.correctCount}/${QUESTION_COUNT}</td>
+        <td>${new Date(attempt.submittedAt).toLocaleTimeString()}</td>
+      `;
+      rows.appendChild(tr);
+    });
+
+  if (!attempts.length) {
+    rows.innerHTML = '<tr><td colspan="5">오늘 응시 기록이 없습니다.</td></tr>';
+  }
+}
+
+function renderStudentSummaryRows(attempts) {
   const byStudentExam = new Map();
   attempts.forEach((attempt) => {
     const key = `${attempt.examId}__${attempt.studentId}`;
@@ -270,25 +347,20 @@ function renderDashboard() {
     .sort(([a], [b]) => a.localeCompare(b, "ko"))
     .forEach(([_key, list]) => {
       const latest = list[list.length - 1];
-      const best = Math.max(...list.map((item) => item.score));
-      const avg = Math.round(list.reduce((sum, item) => sum + item.score, 0) / list.length);
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${latest.examTitle}</td>
         <td>${latest.studentId}</td>
-        <td>${list.length}</td>
         <td>${latest.score}</td>
-        <td>${best}</td>
-        <td>${avg}</td>
+        <td>${latest.correctCount}/${QUESTION_COUNT}</td>
+        <td>${new Date(latest.submittedAt).toLocaleString()}</td>
       `;
       rows.appendChild(tr);
     });
 
   if (!byStudentExam.size) {
-    rows.innerHTML = '<tr><td colspan="6">아직 기록이 없습니다.</td></tr>';
+    rows.innerHTML = '<tr><td colspan="5">아직 기록이 없습니다.</td></tr>';
   }
-
-  renderMissDashboard(attempts);
 }
 
 function renderMissDashboard(attempts) {
@@ -311,9 +383,8 @@ function renderMissDashboard(attempts) {
   const topMisses = [...misses.values()]
     .filter((item) => item.count > 0)
     .sort((a, b) => b.count - a.count || a.examId.localeCompare(b.examId) || a.qno - b.qno)
-    .slice(0, 12);
+    .slice(0, 10);
 
-  const maxMiss = Math.max(1, ...topMisses.map((item) => item.count));
   const box = $("#missDashboard");
   box.innerHTML = "";
   if (!topMisses.length) {
@@ -321,15 +392,19 @@ function renderMissDashboard(attempts) {
     return;
   }
 
-  topMisses.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "miss-row";
-    row.innerHTML = `
-      <strong>${EXAMS[item.examId].title} ${item.qno}번</strong>
-      <div class="miss-bar"><div class="miss-fill" style="width:${(item.count / maxMiss) * 100}%"></div></div>
-      <span>${item.count}회</span>
+  topMisses.forEach((item, index) => {
+    const exam = EXAMS[item.examId];
+    const answer = exam.answers[item.qno - 1];
+    const card = document.createElement("article");
+    card.className = "miss-card";
+    card.innerHTML = `
+      <div class="miss-card-head">
+        <strong>${index + 1}. ${exam.title} ${item.qno}번</strong>
+        <span>${item.count}회 오답 · 정답 ${answer}번</span>
+      </div>
+      <img src="${questionImagePath(item.qno, item.examId)}" alt="${exam.title} ${item.qno}번 문제">
     `;
-    box.appendChild(row);
+    box.appendChild(card);
   });
 }
 
@@ -341,6 +416,7 @@ function login(id, password) {
   }
   state.user = { ...user, id };
   $("#loginMessage").textContent = "";
+  recordAccess(state.user);
   if (user.role === "teacher") {
     state.dashboardReturn = "login";
     renderDashboard();
