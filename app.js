@@ -137,8 +137,26 @@ function isToday(isoString) {
   return isoString && todayKey(new Date(isoString)) === todayKey();
 }
 
+function attemptMinutes(attempt) {
+  const start = new Date(attempt.startedAt).getTime();
+  const end = new Date(attempt.submittedAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0;
+  return Math.min(Math.round((end - start) / 60000), 180);
+}
+
+function formatMinutes(minutes) {
+  if (!minutes) return "0분";
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return hours ? `${hours}시간 ${mins}분` : `${mins}분`;
+}
+
 function currentExam() {
   return EXAMS[state.currentExamId];
+}
+
+function studentLabel(studentId) {
+  return String(studentId);
 }
 
 function questionImagePath(qno, examId = state.currentExamId) {
@@ -337,7 +355,7 @@ function updateProgress() {
 function renderQuestion() {
   const qno = state.current;
   const exam = currentExam();
-  $("#studentBadge").textContent = `${state.user.id} · ${exam.title}`;
+  $("#studentBadge").textContent = `${studentLabel(state.user.id)} · ${exam.title}`;
   $("#questionTitle").textContent = `${qno}번`;
   $("#questionImage").src = questionImagePath(qno);
   $("#questionImage").alt = `${exam.title} ${qno}번 문제`;
@@ -397,7 +415,7 @@ async function submitExam() {
 
 function renderResult(result) {
   $("#scoreText").textContent = `${result.score}점 / ${result.correctCount}개 정답`;
-  $("#resultMeta").textContent = `${result.examTitle} · 학번 ${result.studentId} · 제출 ${new Date(result.submittedAt).toLocaleString()}`;
+  $("#resultMeta").textContent = `${result.examTitle} · ${studentLabel(result.studentId)} · 제출 ${new Date(result.submittedAt).toLocaleString()}`;
   const wrongItems = result.items.filter((item) => !item.correct);
   const wrongList = $("#wrongList");
   wrongList.innerHTML = "";
@@ -452,13 +470,10 @@ async function renderDashboard() {
     statusBox.textContent = state.dataStatus || (supabaseClient ? "Supabase 연결됨" : "로컬 저장 모드");
   }
 
-  if (state.user?.role === "teacher") {
-    renderTodayScoreRows(todayAttempts);
-    renderMissDashboard(recentAttempts);
-  } else {
-    renderStudentSummaryRows(recentAttempts);
-    renderMissDashboard(recentAttempts);
-  }
+  renderLearningRows(recentAttempts, recentAccessLog);
+  renderScoreDistribution(recentAttempts);
+  renderStudyInsights(todayAttempts, recentAttempts, recentAccessLog);
+  renderMissDashboard(recentAttempts);
 }
 
 function renderTodayScoreRows(attempts) {
@@ -471,7 +486,7 @@ function renderTodayScoreRows(attempts) {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${attempt.examTitle}</td>
-        <td>${attempt.studentId}</td>
+        <td>${studentLabel(attempt.studentId)}</td>
         <td>${attempt.score}</td>
         <td>${attempt.correctCount}/${QUESTION_COUNT}</td>
         <td>${new Date(attempt.submittedAt).toLocaleTimeString()}</td>
@@ -497,7 +512,7 @@ function renderStudentSummaryRows(attempts) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${latest.examTitle}</td>
-      <td>${latest.studentId}</td>
+      <td>${studentLabel(latest.studentId)}</td>
       <td>${latest.score}</td>
       <td>${latest.correctCount}/${QUESTION_COUNT}</td>
       <td>${new Date(latest.submittedAt).toLocaleString()}</td>
@@ -505,6 +520,153 @@ function renderStudentSummaryRows(attempts) {
     rows.appendChild(tr);
   });
   if (!byStudentExam.size) rows.innerHTML = '<tr><td colspan="5">아직 기록이 없습니다.</td></tr>';
+}
+
+function buildStudentMetrics(attempts, accessLog) {
+  const metrics = new Map();
+  Object.entries(USERS)
+    .filter(([, user]) => user.role === "student")
+    .forEach(([id]) => {
+      metrics.set(id, {
+        id,
+        accessCount: 0,
+        attemptCount: 0,
+        totalMinutes: 0,
+        averageScore: 0,
+        bestScore: 0,
+        lastAccess: null,
+        scores: [],
+      });
+    });
+
+  accessLog
+    .filter((log) => log.role === "student")
+    .forEach((log) => {
+      const id = String(log.userId);
+      if (!metrics.has(id)) return;
+      const row = metrics.get(id);
+      const at = new Date(log.at);
+      row.accessCount += 1;
+      if (!row.lastAccess || at > row.lastAccess) row.lastAccess = at;
+    });
+
+  attempts.forEach((attempt) => {
+    const id = String(attempt.studentId);
+    if (!metrics.has(id)) return;
+    const row = metrics.get(id);
+    row.attemptCount += 1;
+    row.totalMinutes += attemptMinutes(attempt);
+    row.scores.push(Number(attempt.score) || 0);
+  });
+
+  metrics.forEach((row) => {
+    row.averageScore = row.scores.length
+      ? Math.round(row.scores.reduce((sum, score) => sum + score, 0) / row.scores.length)
+      : 0;
+    row.bestScore = row.scores.length ? Math.max(...row.scores) : 0;
+  });
+
+  return [...metrics.values()]
+    .filter((row) => row.accessCount || row.attemptCount)
+    .sort((a, b) => {
+      if (b.totalMinutes !== a.totalMinutes) return b.totalMinutes - a.totalMinutes;
+      return a.id.localeCompare(b.id);
+    });
+}
+
+function renderLearningRows(attempts, accessLog) {
+  const rows = $("#studentRows");
+  rows.innerHTML = "";
+  const metrics = buildStudentMetrics(attempts, accessLog);
+  metrics.forEach((row) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${studentLabel(row.id)}</td>
+      <td>${row.accessCount}</td>
+      <td>${row.attemptCount}</td>
+      <td>${formatMinutes(row.totalMinutes)}</td>
+      <td>${row.averageScore} / ${row.bestScore}</td>
+      <td>${row.lastAccess ? row.lastAccess.toLocaleString() : "-"}</td>
+    `;
+    rows.appendChild(tr);
+  });
+  if (!metrics.length) rows.innerHTML = '<tr><td colspan="6">아직 학습 기록이 없습니다.</td></tr>';
+}
+
+function renderScoreDistribution(attempts) {
+  const box = $("#scoreDistribution");
+  if (!box) return;
+  const bins = [
+    { label: "0-39점", min: 0, max: 39, count: 0 },
+    { label: "40-59점", min: 40, max: 59, count: 0 },
+    { label: "60-79점", min: 60, max: 79, count: 0 },
+    { label: "80-100점", min: 80, max: 100, count: 0 },
+  ];
+  attempts.forEach((attempt) => {
+    const score = Number(attempt.score) || 0;
+    const bin = bins.find((item) => score >= item.min && score <= item.max);
+    if (bin) bin.count += 1;
+  });
+  const maxCount = Math.max(...bins.map((bin) => bin.count), 1);
+  box.innerHTML = bins.map((bin) => `
+    <div class="score-bin">
+      <span>${bin.label}</span>
+      <div class="score-bar"><i style="width: ${(bin.count / maxCount) * 100}%"></i></div>
+      <strong>${bin.count}회</strong>
+    </div>
+  `).join("");
+}
+
+function renderStudyInsights(todayAttempts, recentAttempts, accessLog) {
+  const box = $("#studyInsights");
+  if (!box) return;
+  const metrics = buildStudentMetrics(recentAttempts, accessLog);
+  const accessedNoAttempt = metrics.filter((row) => row.accessCount && !row.attemptCount).length;
+  const scores = recentAttempts.map((attempt) => Number(attempt.score) || 0);
+  const average = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
+  const lowScoreCount = scores.filter((score) => score < 60).length;
+  const topMiss = getTopMisses(recentAttempts, 1)[0];
+  const insights = [];
+
+  if (scores.length) {
+    insights.push(`누적 평균은 ${average}점입니다. 60점 미만 기록은 ${lowScoreCount}회라서, 재응시 전에 오답노트를 먼저 확인하는 흐름이 좋습니다.`);
+  } else {
+    insights.push("아직 누적 점수 데이터가 없습니다. 학생이 한 회차 이상 제출하면 분포와 약점 분석이 채워집니다.");
+  }
+  if (topMiss) {
+    insights.push(`가장 많이 틀린 문항은 ${EXAMS[topMiss.examId].title} ${topMiss.qno}번입니다. 수업 시작 전에 이 문항을 짧게 풀이하면 효율이 좋습니다.`);
+  }
+  if (accessedNoAttempt) {
+    insights.push(`접속은 했지만 제출 기록이 없는 학생 ID가 ${accessedNoAttempt}명 있습니다. 기기 문제인지, 문제 풀이 중 이탈인지 확인해보면 좋습니다.`);
+  }
+  if (todayAttempts.length) {
+    insights.push(`오늘 제출된 기록은 ${todayAttempts.length}회입니다. 같은 회차 반복 응시자는 점수 변화 폭을 기준으로 개별 피드백을 주기 좋습니다.`);
+  }
+
+  box.innerHTML = insights.map((text) => `<p>${text}</p>`).join("");
+}
+
+function getTopMisses(attempts, limit = 10) {
+  const misses = new Map();
+  Object.keys(EXAMS).forEach((examId) => {
+    for (let qno = 1; qno <= QUESTION_COUNT; qno += 1) {
+      misses.set(`${examId}__${qno}`, { examId, qno, count: 0 });
+    }
+  });
+
+  attempts.forEach((attempt) => {
+    attempt.items.forEach((item) => {
+      if (!item.correct) {
+        const key = `${attempt.examId}__${item.qno}`;
+        if (misses.has(key)) misses.get(key).count += 1;
+      }
+    });
+  });
+
+  return [...misses.values()]
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.examId.localeCompare(b.examId) || a.qno - b.qno)
+    .slice(0, limit);
 }
 
 function renderMissDashboard(attempts) {

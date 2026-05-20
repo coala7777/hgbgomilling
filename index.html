@@ -137,21 +137,32 @@
       <p class="dashboard-status" id="dashboardStatus">데이터 연결 확인 중</p>
 
       <section>
-        <h3>오늘 점수현황</h3>
+        <h3>학생별 학습 현황</h3>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>회차</th>
-                <th>학번</th>
-                <th>점수</th>
-                <th>정답수</th>
-                <th>제출시간</th>
+                <th>학생 ID</th>
+                <th>접속수</th>
+                <th>응시수</th>
+                <th>학습시간</th>
+                <th>평균 / 최고</th>
+                <th>최근 접속</th>
               </tr>
             </thead>
             <tbody id="studentRows"></tbody>
           </table>
         </div>
+      </section>
+
+      <section>
+        <h3>누적 점수분포</h3>
+        <div class="score-distribution" id="scoreDistribution"></div>
+      </section>
+
+      <section>
+        <h3>학습 추천</h3>
+        <div class="study-insights" id="studyInsights"></div>
       </section>
 
       <section>
