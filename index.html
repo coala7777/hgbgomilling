@@ -20,14 +20,28 @@
   <main>
     <section class="screen active" id="loginScreen">
       <div class="login-panel">
-        <p class="section-label">2014년 1회차 예제문제</p>
-        <h2>학번을 입력하고 시험을 시작하세요</h2>
+        <p class="section-label">로그인</p>
+        <h2>아이디와 비밀번호를 입력하세요</h2>
         <form id="loginForm">
-          <label for="studentId">학번</label>
-          <input id="studentId" name="studentId" inputmode="numeric" autocomplete="off" placeholder="예: 2301" required>
-          <button class="primary-btn" type="submit">시험 시작</button>
+          <label for="loginId">아이디</label>
+          <input id="loginId" name="loginId" inputmode="numeric" autocomplete="username" placeholder="예: 1101" required>
+          <label for="loginPw">비밀번호</label>
+          <input id="loginPw" name="loginPw" type="password" inputmode="numeric" autocomplete="current-password" placeholder="초기 비밀번호는 아이디와 같습니다" required>
+          <p class="form-message" id="loginMessage" aria-live="polite"></p>
+          <button class="primary-btn" type="submit">로그인</button>
         </form>
       </div>
+    </section>
+
+    <section class="screen" id="examSelectScreen">
+      <div class="select-head">
+        <div>
+          <p class="section-label">회차 선택</p>
+          <h2 id="welcomeText">응시할 문제를 선택하세요</h2>
+        </div>
+        <button class="secondary-btn" id="logoutBtn" type="button">로그아웃</button>
+      </div>
+      <div class="exam-list" id="examList"></div>
     </section>
 
     <section class="screen" id="examScreen">
@@ -70,7 +84,8 @@
       </div>
 
       <div class="result-actions">
-        <button class="primary-btn" id="restartBtn" type="button">다시 풀기</button>
+        <button class="primary-btn" id="retryBtn" type="button">같은 회차 다시 풀기</button>
+        <button class="secondary-btn" id="chooseExamBtn" type="button">다른 회차 선택</button>
         <button class="secondary-btn" id="dashboardBtn" type="button">대시보드 보기</button>
       </div>
 
@@ -84,9 +99,9 @@
       <div class="dashboard-head">
         <div>
           <p class="section-label">누적 기록</p>
-          <h2>학번별 점수 대시보드</h2>
+          <h2>점수 대시보드</h2>
         </div>
-        <button class="secondary-btn" id="backToLoginBtn" type="button">처음으로</button>
+        <button class="secondary-btn" id="backFromDashboardBtn" type="button">돌아가기</button>
       </div>
 
       <div class="stats-grid">
@@ -108,6 +123,7 @@
         <table>
           <thead>
             <tr>
+              <th>회차</th>
               <th>학번</th>
               <th>응시</th>
               <th>최근</th>

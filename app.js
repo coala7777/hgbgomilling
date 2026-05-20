@@ -1,27 +1,65 @@
 const QUESTION_COUNT = 60;
-const STORAGE_KEY = "hankibu_cbt_attempts_v1";
+const STORAGE_KEY = "hankibu_cbt_attempts_v2";
 
-const ANSWERS = [
-  1, 4, 1, 4, 2,
-  3, 3, 2, 4, 2,
-  2, 1, 1, 1, 2,
-  4, 2, 1, 3, 4,
-  2, 2, 3, 1, 2,
-  1, 4, 3, 1, 3,
-  1, 3, 4, 3, 4,
-  2, 2, 4, 1, 2,
-  3, 2, 1, 1, 4,
-  2, 1, 1, 3, 3,
-  2, 2, 1, 1, 3,
-  4, 4, 3, 1, 4,
-];
+const EXAMS = {
+  "2014_1": {
+    title: "2014년 1회차",
+    folder: "2014_1",
+    answers: [
+      1, 4, 1, 4, 2,
+      3, 3, 2, 4, 2,
+      2, 1, 1, 1, 2,
+      4, 2, 1, 3, 4,
+      2, 2, 3, 1, 2,
+      1, 4, 3, 1, 3,
+      1, 3, 4, 3, 4,
+      2, 2, 4, 1, 2,
+      3, 2, 1, 1, 4,
+      2, 1, 1, 3, 3,
+      2, 2, 1, 1, 3,
+      4, 4, 3, 1, 4,
+    ],
+  },
+  "2014_2": {
+    title: "2014년 2회차",
+    folder: "2014_2",
+    answers: [
+      4, 4, 2, 2, 1,
+      4, 4, 4, 3, 1,
+      4, 4, 2, 3, 4,
+      4, 4, 1, 4, 3,
+      2, 1, 2, 1, 1,
+      2, 1, 1, 4, 4,
+      1, 1, 3, 3, 2,
+      3, 3, 1, 4, 4,
+      1, 2, 1, 3, 2,
+      4, 1, 3, 2, 1,
+      2, 3, 3, 2, 2,
+      4, 4, 4, 1, 1,
+    ],
+  },
+};
+
+const USERS = {
+  "0000": { password: "0000", role: "teacher", name: "교사" },
+};
+
+for (let id = 1101; id <= 1121; id += 1) {
+  USERS[String(id)] = { password: String(id), role: "student", name: String(id) };
+}
+
+for (let id = 1201; id <= 1221; id += 1) {
+  USERS[String(id)] = { password: String(id), role: "student", name: String(id) };
+}
 
 const state = {
-  studentId: "",
+  user: null,
+  currentExamId: null,
   current: 1,
   selections: Array(QUESTION_COUNT).fill(null),
   startedAt: null,
   lastResult: null,
+  dashboardReturn: "examSelect",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -29,6 +67,7 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 const screens = {
   login: $("#loginScreen"),
+  examSelect: $("#examSelectScreen"),
   exam: $("#examScreen"),
   result: $("#resultScreen"),
   dashboard: $("#dashboardScreen"),
@@ -40,8 +79,13 @@ function showScreen(name) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function questionImagePath(qno) {
-  return `assets/questions/${qno}.png`;
+function currentExam() {
+  return EXAMS[state.currentExamId];
+}
+
+function questionImagePath(qno, examId = state.currentExamId) {
+  const exam = EXAMS[examId];
+  return `assets/exams/${exam.folder}/${qno}.png`;
 }
 
 function loadAttempts() {
@@ -54,6 +98,26 @@ function loadAttempts() {
 
 function saveAttempts(attempts) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(attempts));
+}
+
+function renderExamSelect() {
+  $("#welcomeText").textContent = `${state.user.name}님, 응시할 문제를 선택하세요`;
+  const list = $("#examList");
+  list.innerHTML = "";
+
+  Object.entries(EXAMS).forEach(([examId, exam]) => {
+    const attempts = loadAttempts().filter((attempt) => attempt.studentId === state.user.id && attempt.examId === examId);
+    const latest = attempts[attempts.length - 1];
+    const card = document.createElement("article");
+    card.className = "exam-card";
+    card.innerHTML = `
+      <h3>${exam.title}</h3>
+      <p>${QUESTION_COUNT}문항${latest ? ` · 최근 ${latest.score}점` : " · 미응시"}</p>
+      <button class="primary-btn" type="button">시험 시작</button>
+    `;
+    card.querySelector("button").addEventListener("click", () => startExam(examId));
+    list.appendChild(card);
+  });
 }
 
 function renderQuestionMap() {
@@ -86,10 +150,11 @@ function updateProgress() {
 
 function renderQuestion() {
   const qno = state.current;
-  $("#studentBadge").textContent = `학번 ${state.studentId}`;
+  const exam = currentExam();
+  $("#studentBadge").textContent = `${state.user.id} · ${exam.title}`;
   $("#questionTitle").textContent = `${qno}번`;
   $("#questionImage").src = questionImagePath(qno);
-  $("#questionImage").alt = `${qno}번 문제`;
+  $("#questionImage").alt = `${exam.title} ${qno}번 문제`;
   $$(".choice-btn").forEach((btn) => {
     btn.classList.toggle("selected", Number(btn.dataset.choice) === state.selections[qno - 1]);
   });
@@ -98,8 +163,8 @@ function renderQuestion() {
   updateProgress();
 }
 
-function startExam(studentId) {
-  state.studentId = studentId;
+function startExam(examId) {
+  state.currentExamId = examId;
   state.current = 1;
   state.selections = Array(QUESTION_COUNT).fill(null);
   state.startedAt = new Date().toISOString();
@@ -109,7 +174,8 @@ function startExam(studentId) {
 }
 
 function scoreExam() {
-  const items = ANSWERS.map((answer, index) => {
+  const answers = currentExam().answers;
+  const items = answers.map((answer, index) => {
     const qno = index + 1;
     const selected = state.selections[index];
     return {
@@ -122,7 +188,9 @@ function scoreExam() {
   const correctCount = items.filter((item) => item.correct).length;
   return {
     id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-    studentId: state.studentId,
+    examId: state.currentExamId,
+    examTitle: currentExam().title,
+    studentId: state.user.id,
     startedAt: state.startedAt,
     submittedAt: new Date().toISOString(),
     correctCount,
@@ -151,7 +219,7 @@ function submitExam() {
 
 function renderResult(result) {
   $("#scoreText").textContent = `${result.score}점 / ${result.correctCount}개 정답`;
-  $("#resultMeta").textContent = `학번 ${result.studentId} · 제출 ${new Date(result.submittedAt).toLocaleString()}`;
+  $("#resultMeta").textContent = `${result.examTitle} · 학번 ${result.studentId} · 제출 ${new Date(result.submittedAt).toLocaleString()}`;
   const wrongItems = result.items.filter((item) => !item.correct);
   const wrongList = $("#wrongList");
   wrongList.innerHTML = "";
@@ -171,38 +239,43 @@ function renderResult(result) {
         <span>선택 ${selectedText}</span>
         <span>정답 ${item.answer}번</span>
       </div>
-      <img src="${questionImagePath(item.qno)}" alt="${item.qno}번 문제">
+      <img src="${questionImagePath(item.qno, result.examId)}" alt="${result.examTitle} ${item.qno}번 문제">
     `;
     wrongList.appendChild(card);
   });
 }
 
 function renderDashboard() {
-  const attempts = loadAttempts();
+  const allAttempts = loadAttempts();
+  const attempts = state.user?.role === "teacher"
+    ? allAttempts
+    : allAttempts.filter((attempt) => attempt.studentId === state.user.id);
   const total = attempts.length;
   const scores = attempts.map((attempt) => attempt.score);
   $("#totalAttempts").textContent = String(total);
   $("#averageScore").textContent = total ? String(Math.round(scores.reduce((a, b) => a + b, 0) / total)) : "0";
   $("#bestScore").textContent = total ? String(Math.max(...scores)) : "0";
 
-  const byStudent = new Map();
+  const byStudentExam = new Map();
   attempts.forEach((attempt) => {
-    const list = byStudent.get(attempt.studentId) || [];
+    const key = `${attempt.examId}__${attempt.studentId}`;
+    const list = byStudentExam.get(key) || [];
     list.push(attempt);
-    byStudent.set(attempt.studentId, list);
+    byStudentExam.set(key, list);
   });
 
   const rows = $("#studentRows");
   rows.innerHTML = "";
-  [...byStudent.entries()]
+  [...byStudentExam.entries()]
     .sort(([a], [b]) => a.localeCompare(b, "ko"))
-    .forEach(([studentId, list]) => {
+    .forEach(([_key, list]) => {
       const latest = list[list.length - 1];
       const best = Math.max(...list.map((item) => item.score));
       const avg = Math.round(list.reduce((sum, item) => sum + item.score, 0) / list.length);
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${studentId}</td>
+        <td>${latest.examTitle}</td>
+        <td>${latest.studentId}</td>
         <td>${list.length}</td>
         <td>${latest.score}</td>
         <td>${best}</td>
@@ -211,31 +284,36 @@ function renderDashboard() {
       rows.appendChild(tr);
     });
 
-  if (!byStudent.size) {
-    rows.innerHTML = '<tr><td colspan="5">아직 기록이 없습니다.</td></tr>';
+  if (!byStudentExam.size) {
+    rows.innerHTML = '<tr><td colspan="6">아직 기록이 없습니다.</td></tr>';
   }
 
   renderMissDashboard(attempts);
 }
 
 function renderMissDashboard(attempts) {
-  const misses = Array.from({ length: QUESTION_COUNT }, (_, index) => ({
-    qno: index + 1,
-    count: 0,
-  }));
+  const misses = new Map();
+  Object.keys(EXAMS).forEach((examId) => {
+    for (let qno = 1; qno <= QUESTION_COUNT; qno += 1) {
+      misses.set(`${examId}__${qno}`, { examId, qno, count: 0 });
+    }
+  });
 
   attempts.forEach((attempt) => {
     attempt.items.forEach((item) => {
-      if (!item.correct) misses[item.qno - 1].count += 1;
+      if (!item.correct) {
+        const key = `${attempt.examId}__${item.qno}`;
+        if (misses.has(key)) misses.get(key).count += 1;
+      }
     });
   });
 
-  const maxMiss = Math.max(1, ...misses.map((item) => item.count));
-  const topMisses = misses
+  const topMisses = [...misses.values()]
     .filter((item) => item.count > 0)
-    .sort((a, b) => b.count - a.count || a.qno - b.qno)
+    .sort((a, b) => b.count - a.count || a.examId.localeCompare(b.examId) || a.qno - b.qno)
     .slice(0, 12);
 
+  const maxMiss = Math.max(1, ...topMisses.map((item) => item.count));
   const box = $("#missDashboard");
   box.innerHTML = "";
   if (!topMisses.length) {
@@ -247,12 +325,39 @@ function renderMissDashboard(attempts) {
     const row = document.createElement("div");
     row.className = "miss-row";
     row.innerHTML = `
-      <strong>${item.qno}번</strong>
+      <strong>${EXAMS[item.examId].title} ${item.qno}번</strong>
       <div class="miss-bar"><div class="miss-fill" style="width:${(item.count / maxMiss) * 100}%"></div></div>
       <span>${item.count}회</span>
     `;
     box.appendChild(row);
   });
+}
+
+function login(id, password) {
+  const user = USERS[id];
+  if (!user || user.password !== password) {
+    $("#loginMessage").textContent = "아이디 또는 비밀번호가 맞지 않습니다.";
+    return;
+  }
+  state.user = { ...user, id };
+  $("#loginMessage").textContent = "";
+  if (user.role === "teacher") {
+    state.dashboardReturn = "login";
+    renderDashboard();
+    showScreen("dashboard");
+    return;
+  }
+  renderExamSelect();
+  showScreen("examSelect");
+}
+
+function logout() {
+  state.user = null;
+  state.currentExamId = null;
+  state.lastResult = null;
+  $("#loginId").value = "";
+  $("#loginPw").value = "";
+  showScreen("login");
 }
 
 function setupCalculator() {
@@ -299,17 +404,15 @@ function setupCalculator() {
 
 $("#loginForm").addEventListener("submit", (event) => {
   event.preventDefault();
-  const studentId = $("#studentId").value.trim();
-  if (!studentId) return;
-  startExam(studentId);
+  login($("#loginId").value.trim(), $("#loginPw").value.trim());
 });
+
+$("#logoutBtn").addEventListener("click", logout);
 
 $$(".choice-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
     state.selections[state.current - 1] = Number(btn.dataset.choice);
-    if (state.current < QUESTION_COUNT) {
-      state.current += 1;
-    }
+    if (state.current < QUESTION_COUNT) state.current += 1;
     renderQuestion();
   });
 });
@@ -325,11 +428,25 @@ $("#nextBtn").addEventListener("click", () => {
 });
 
 $("#submitBtn").addEventListener("click", submitExam);
-$("#restartBtn").addEventListener("click", () => startExam(state.studentId));
+$("#retryBtn").addEventListener("click", () => startExam(state.currentExamId));
+$("#chooseExamBtn").addEventListener("click", () => {
+  renderExamSelect();
+  showScreen("examSelect");
+});
 $("#dashboardBtn").addEventListener("click", () => {
+  state.dashboardReturn = "result";
   renderDashboard();
   showScreen("dashboard");
 });
-$("#backToLoginBtn").addEventListener("click", () => showScreen("login"));
+$("#backFromDashboardBtn").addEventListener("click", () => {
+  if (state.user?.role === "teacher" || state.dashboardReturn === "login") {
+    logout();
+  } else if (state.dashboardReturn === "result" && state.lastResult) {
+    showScreen("result");
+  } else {
+    renderExamSelect();
+    showScreen("examSelect");
+  }
+});
 
 setupCalculator();
