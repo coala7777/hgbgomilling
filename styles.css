@@ -98,9 +98,9 @@ h3 {
 }
 
 main {
-  width: min(1180px, 100%);
+  width: min(1480px, 100%);
   margin: 0 auto;
-  padding: 22px clamp(14px, 3vw, 28px) 48px;
+  padding: 24px clamp(16px, 3vw, 36px) 56px;
 }
 
 .screen {
@@ -224,8 +224,9 @@ input {
 .question-stage {
   display: flex;
   justify-content: center;
-  min-height: 360px;
-  padding: clamp(10px, 2vw, 18px);
+  align-items: flex-start;
+  min-height: 520px;
+  padding: clamp(14px, 2vw, 28px);
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -233,7 +234,7 @@ input {
 
 .question-stage img {
   display: block;
-  max-width: 100%;
+  width: min(100%, 1180px);
   height: auto;
   object-fit: contain;
 }
@@ -243,6 +244,12 @@ input {
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   margin: 16px 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 10px 0;
+  background: rgba(238, 244, 242, 0.92);
+  backdrop-filter: blur(8px);
 }
 
 .choice-btn {
@@ -323,18 +330,41 @@ input {
 
 .question-map {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(42px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
   gap: 7px;
   margin-top: 18px;
 }
 
 .map-btn {
-  min-height: 38px;
+  min-height: 42px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: white;
   color: var(--ink);
   font-weight: 800;
+}
+
+@media (min-width: 1100px) {
+  .exam-status {
+    padding: 16px 18px;
+  }
+
+  #questionTitle {
+    font-size: 28px;
+  }
+
+  .choice-btn {
+    min-height: 72px;
+    font-size: 32px;
+  }
+
+  .exam-actions button {
+    min-height: 52px;
+  }
+
+  .question-stage img {
+    width: min(100%, 1280px);
+  }
 }
 
 .map-btn.current {
@@ -572,6 +602,17 @@ th {
 
   .question-stage {
     min-height: 280px;
+  }
+
+  .question-stage img {
+    width: 100%;
+  }
+
+  .choice-panel {
+    position: static;
+    padding: 0;
+    background: transparent;
+    backdrop-filter: none;
   }
 
   .stats-grid {
