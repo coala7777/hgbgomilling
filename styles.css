@@ -50,6 +50,70 @@ button {
   z-index: 0;
 }
 
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(247, 250, 249, 0.88);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+  z-index: 20;
+}
+
+.loading-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.loading-card {
+  width: min(320px, 86vw);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 28px 24px;
+  color: var(--ink);
+  text-align: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(19, 111, 99, 0.18);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(23, 32, 42, 0.14);
+}
+
+.loading-card img {
+  width: 132px;
+  height: 132px;
+  object-fit: contain;
+  border-radius: 50%;
+  animation: markPulse 1.4s ease-in-out infinite;
+}
+
+.loading-card strong {
+  font-size: 20px;
+}
+
+.loading-card span {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+@keyframes markPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.86;
+  }
+
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
 .topbar,
 main {
   position: relative;

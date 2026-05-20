@@ -91,10 +91,39 @@ const supabaseClient = window.supabase && supabaseSettings.url && supabaseSettin
   ? window.supabase.createClient(supabaseSettings.url, supabaseSettings.anonKey)
   : null;
 
+let loadingCount = 0;
+
 function showScreen(name) {
   Object.values(screens).forEach((screen) => screen.classList.remove("active"));
   screens[name].classList.add("active");
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function setLoading(active, message = "데이터 연결 중") {
+  const overlay = $("#loadingOverlay");
+  if (!overlay) return;
+  if (active) {
+    loadingCount += 1;
+    $("#loadingTitle").textContent = message;
+    overlay.classList.add("active");
+    overlay.setAttribute("aria-hidden", "false");
+    return;
+  }
+
+  loadingCount = Math.max(0, loadingCount - 1);
+  if (loadingCount === 0) {
+    overlay.classList.remove("active");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+}
+
+async function withLoading(message, task) {
+  setLoading(true, message);
+  try {
+    return await task();
+  } finally {
+    setLoading(false);
+  }
 }
 
 function todayKey(date = new Date()) {
@@ -360,7 +389,7 @@ async function submitExam() {
     return;
   }
   const result = scoreExam();
-  await saveAttempt(result);
+  await withLoading("점수 저장 중", () => saveAttempt(result));
   state.lastResult = result;
   renderResult(result);
   showScreen("result");
@@ -531,15 +560,17 @@ async function login(id, password) {
   }
   state.user = { ...user, id };
   $("#loginMessage").textContent = "";
-  await recordAccess(state.user);
-  if (user.role === "teacher") {
-    state.dashboardReturn = "login";
-    await renderDashboard();
-    showScreen("dashboard");
-    return;
-  }
-  await renderExamSelect();
-  showScreen("examSelect");
+  await withLoading("데이터 연결 중", async () => {
+    await recordAccess(state.user);
+    if (user.role === "teacher") {
+      state.dashboardReturn = "login";
+      await renderDashboard();
+      showScreen("dashboard");
+      return;
+    }
+    await renderExamSelect();
+    showScreen("examSelect");
+  });
 }
 
 function logout() {
@@ -621,13 +652,17 @@ $("#nextBtn").addEventListener("click", () => {
 $("#submitBtn").addEventListener("click", submitExam);
 $("#retryBtn").addEventListener("click", () => startExam(state.currentExamId));
 $("#chooseExamBtn").addEventListener("click", async () => {
-  await renderExamSelect();
-  showScreen("examSelect");
+  await withLoading("응시 기록 불러오는 중", async () => {
+    await renderExamSelect();
+    showScreen("examSelect");
+  });
 });
 $("#dashboardBtn").addEventListener("click", async () => {
   state.dashboardReturn = "result";
-  await renderDashboard();
-  showScreen("dashboard");
+  await withLoading("대시보드 불러오는 중", async () => {
+    await renderDashboard();
+    showScreen("dashboard");
+  });
 });
 $("#backFromDashboardBtn").addEventListener("click", async () => {
   if (state.user?.role === "teacher" || state.dashboardReturn === "login") {
@@ -635,8 +670,10 @@ $("#backFromDashboardBtn").addEventListener("click", async () => {
   } else if (state.dashboardReturn === "result" && state.lastResult) {
     showScreen("result");
   } else {
-    await renderExamSelect();
-    showScreen("examSelect");
+    await withLoading("응시 기록 불러오는 중", async () => {
+      await renderExamSelect();
+      showScreen("examSelect");
+    });
   }
 });
 
