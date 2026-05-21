@@ -26,7 +26,8 @@ function cleanText(text) {
 function normalizeOptionMarkers(text) {
   return cleanText(text)
     .replace(/(^|\n)\s*[lI]\s+/g, "$1① ")
-    .replace(/(^|\n)\s*⑦\s+/g, "$1② ")
+    .replace(/(^|\n)\s*[⑦®]\s*/g, "$1② ")
+    .replace(/(^|\n)\s*[⑧⑨]\s*/g, "$1③ ")
     .replace(/(^|\n)\s*[.·]\s+/g, "$1④ ");
 }
 
@@ -61,9 +62,9 @@ function optionsOf(text) {
   let current = null;
   let fallbackNo = 1;
   lines.forEach((line) => {
-    const marker = line.match(/^([①②③④@])\s*(.+)$/);
+    const marker = line.match(/^([①②③④@⑦®⑧⑨])\s*(.+)$/);
     if (marker) {
-      const explicit = symbols[marker[1]];
+      const explicit = symbols[marker[1]] || ({ "⑦": 2, "®": 2, "⑧": 3, "⑨": 3 })[marker[1]];
       const no = explicit || fallbackNo;
       options[no] = marker[2].trim();
       current = no;
@@ -167,28 +168,79 @@ function fallbackReason(source, answerText, type) {
     return `비중은 물을 1로 보았을 때의 상대적인 무게입니다. 이 문항에서는 표준 재료값이 ${displayAnswer}로 정리되므로, 보기를 계산식으로 풀기보다 재료별 대표 비중값과 비교해 판단합니다.`;
   }
   if (/색깔|색상|표시색/.test(combined) && displayAnswer) {
-    return `색상 구분 문제는 규정된 표시색을 그대로 연결해야 합니다. 이 경우 기준이 되는 표시가 ${displayAnswer}이므로, 임의의 색감을 고르지 말고 안전·제도·작업 표준에서 정한 색상 대응을 확인합니다.`;
+    return `${displayAnswer}가 이 조건에 대응되는 표시색입니다. 색상 문제는 느낌으로 고르는 것이 아니라 안전·제도·작업 표준에서 정한 색상과 용도를 그대로 연결해야 합니다.`;
   }
   if (/기호|약호|명칭|무엇이라/.test(combined) && displayAnswer) {
-    return `${displayAnswer}는 이 조건에서 쓰는 표준 명칭 또는 기호입니다. 이런 문항은 설명 속 기능과 보기의 용어가 같은 대상을 가리키는지 확인하면 되며, 비슷한 이름이라도 기능이 다르면 제외해야 합니다.`;
+    return `${displayAnswer}는 이 조건에서 쓰는 표준 명칭 또는 기호입니다. 설명 속 기능과 보기의 용어가 같은 대상을 가리키기 때문에 이 항목으로 판단합니다.`;
   }
   if (/사용|쓰이는|용도|적합/.test(combined) && displayAnswer) {
-    return `${displayAnswer}는 제시된 작업 조건에 맞는 용도나 재료입니다. 용도 문제는 강도, 내마멸성, 가공성, 측정 대상처럼 조건으로 제시된 성질을 먼저 잡고 그 성질을 만족하는 보기를 고릅니다.`;
+    return `${displayAnswer}는 제시된 작업 조건에 맞는 용도나 재료입니다. 문제의 단서가 되는 강도, 내마멸성, 가공성, 측정 대상 조건을 만족하므로 이 항목으로 판단합니다.`;
   }
   if (/공식|계산|구하|값|몇|회전수|이송|속도|시간|각도|공차/.test(combined) || type === "calculation") {
-    return `계산 결과는 ${displayAnswer}와 대응됩니다. 먼저 문제에서 구하는 값을 하나로 정하고, 주어진 수치의 단위를 맞춘 뒤 기본식에 대입합니다. 계산값과 보기값이 정확히 같지 않으면 가장 가까운 값 또는 반올림 조건을 확인합니다.`;
+    return `계산 결과는 ${displayAnswer}와 대응됩니다. 문제에서 구하는 값을 하나로 정하고 주어진 수치의 단위를 맞춘 뒤 기본식에 대입하면 이 값으로 좁혀집니다.`;
   }
   if (type === "negative" && displayAnswer) {
-    return `'${displayAnswer}'라는 설명은 문제의 개념과 어긋나는 부분입니다. 틀린 설명을 찾을 때는 보기의 핵심어와 결과를 분리해서, 원래 개념의 방향과 반대로 말한 부분이나 서로 연결되지 않는 용어를 찾아야 합니다.`;
+    return `'${displayAnswer}'라는 설명은 문제의 개념과 어긋납니다. 보기의 핵심어와 결과를 분리해 보면, 이 문장이 원래 개념의 방향과 반대로 말하거나 서로 맞지 않는 용어를 연결하고 있습니다.`;
   }
   if (displayAnswer) {
-    return `'${displayAnswer}'가 이 문항의 판단 기준입니다. 보기의 단어를 외워서 고르기보다, 그 용어가 나타내는 기능·조건·결과가 문제에서 요구한 상황과 같은지 확인해야 합니다.`;
+    return `${displayAnswer}가 문제의 단서와 직접 연결됩니다. 이 용어가 나타내는 기능, 조건, 결과가 문제에서 요구한 상황과 같기 때문에 이 항목으로 판단합니다.`;
   }
-  return "보기의 핵심 조건을 하나씩 분리해 실제 개념과 맞는지 확인해야 합니다. 숫자가 있으면 단위를 먼저 맞추고, 용어가 있으면 정의와 사용 상황을 먼저 대조합니다.";
+  return "문제에서 제시한 조건과 같은 기능이나 성질을 가진 보기를 고릅니다.";
+}
+
+function noAnswerTextReason(stem, answer) {
+  const target = `${answer}번 보기`;
+  if (/유체.*흘러나오는 것을 방지|누설|틈새.*볼트/.test(stem)) {
+    return "캡 너트는 한쪽 끝이 막혀 있는 너트라서 볼트 끝이나 나사부를 덮어 줍니다. 유체가 나사 틈이나 볼트 구멍을 통해 새어 나오는 것을 막아야 한다는 단서가 나오면 캡 너트를 떠올리면 됩니다.";
+  }
+  if (/특정한 모양|같은 치수|대량 생산|사용범위가 한정/.test(stem)) {
+    return "전용 공작기계는 특정 제품이나 특정 공정에 맞게 만든 기계입니다. 같은 모양과 같은 치수의 제품을 대량생산하기 쉽지만, 사용 범위가 좁아 다품종 소량생산에는 맞지 않는다는 단서가 나오면 전용 공작기계로 판단합니다.";
+  }
+  if (/나사의 유효지름|유효지름을 측정/.test(stem)) {
+    return "나사의 유효지름을 가장 정밀하게 측정하는 대표적인 방법은 삼침법입니다. 나사산 사이에 지름이 같은 세 개의 침을 끼우고 외측 치수를 재어 유효지름을 계산하므로, 나사 마이크로미터보다 정밀 측정 기준으로 자주 쓰입니다.";
+  }
+  if (/작은 덩어리.*고속|피로 강도|스프링|반복 하중/.test(stem)) {
+    return "숏피닝은 작은 강구나 금속 입자를 공작물 표면에 고속으로 분사해 표면에 압축 잔류응력을 만드는 가공법입니다. 이 압축응력 때문에 반복하중을 받는 스프링, 기어, 축의 피로강도를 높일 수 있습니다.";
+  }
+  if (/Tr\s*10\s*x\s*2|Tr10/.test(stem)) {
+    return "나사 기호에서 Tr은 미터 사다리꼴나사를 뜻합니다. Tr10 x 2는 호칭지름 10mm, 피치 2mm인 미터 사다리꼴나사라는 의미이므로, Tr 표시가 나오면 사다리꼴나사로 연결합니다.";
+  }
+  if (/CAD.*CAM.*출력장치|출력장치/.test(stem)) {
+    return "CAD/CAM 시스템에서 출력장치는 처리 결과를 밖으로 보여 주거나 내보내는 장치입니다. 모니터는 도면과 가공 정보를 화면으로 출력하므로 출력장치에 해당하고, 마우스·키보드·스캐너는 입력장치로 분류합니다.";
+  }
+  if (/서보모터.*조건/.test(stem)) {
+    return "CNC 공작기계의 서보모터는 잦은 시동·정지·역전이 가능하고, 응답성과 안정성이 좋아야 합니다. 위치를 정확히 제어해야 하므로 모터 자체의 안정성이 작아야 한다는 설명은 서보모터 조건과 맞지 않습니다.";
+  }
+  if (/투상도|입체도|정면도|평면도|우측면도|제\s*3각|3각법|화살표 방향/.test(stem)) {
+    return `정답은 ${target}입니다. 투상도 문제는 보이는 방향을 먼저 정하고, 제3각법에서는 정면도 위에 평면도, 정면도 오른쪽에 우측면도가 놓인다는 배치 기준으로 비교합니다. 보이는 모서리는 실선, 가려진 모서리는 숨은선으로 처리되는지도 함께 확인합니다.`;
+  }
+  if (/표면|제거가공|면의 지시|도시기호|기호/.test(stem)) {
+    return `정답은 ${target}입니다. 제도 기호 문제는 기호의 모양이 뜻하는 지시를 그대로 연결해야 합니다. 제거가공 필요 여부, 가공 금지 여부, 표면 상태 지시처럼 기호마다 의미가 다르므로 기호의 추가 선이나 원 표시를 기준으로 판단합니다.`;
+  }
+  if (/너트|볼트|나사|브레이크|척|기계요소/.test(stem)) {
+    return `정답은 ${target}입니다. 기계요소 문제는 부품의 모양보다 기능을 먼저 봅니다. 누설 방지, 체결, 하중 전달, 회전 제동처럼 문제에서 요구한 역할과 같은 기능을 가진 보기를 고르면 됩니다.`;
+  }
+  if (/안전|위험|보호|정지/.test(stem)) {
+    return `정답은 ${target}입니다. 안전 문제는 작업자의 사고를 줄이는 행동인지, 오히려 위험을 키우는 행동인지를 기준으로 판단합니다. 가공 중 청소, 방호문 개방, 비상 정지 지연처럼 위험을 직접 만드는 행동은 안전사항으로 적절하지 않습니다.`;
+  }
+  if (/CNC|NC|프로그램|CAD|CAM|서보모터/.test(stem)) {
+    return `정답은 ${target}입니다. CNC와 CAD/CAM 문제는 기능 이름과 실제 역할을 연결해야 합니다. 좌표 제어, 삭제, 출력장치, 모터 응답성처럼 문제의 동작 설명과 같은 기능을 가진 보기를 고릅니다.`;
+  }
+  if (/주철|강|금속|재료|가공법|피로 강도|소성/.test(stem)) {
+    return `정답은 ${target}입니다. 재료와 가공법 문제는 성질과 용도를 연결해 판단합니다. 강도, 내마멸성, 피로강도, 주조성, 소성변형처럼 문제에 제시된 성질을 만족하는 재료나 가공법을 고르면 됩니다.`;
+  }
+  if (/밀링|드릴|키 홈|절삭|공작기계|가공/.test(stem)) {
+    return `정답은 ${target}입니다. 가공 문제는 어떤 공작기계가 그 형상이나 작업에 가장 적합한지 보는 문제입니다. 홈, 평면, 구멍, 윤곽, 대량생산처럼 작업 목적을 먼저 잡고 그 목적에 맞는 장비나 방법을 고릅니다.`;
+  }
+  return `정답은 ${target}입니다. OCR에서 선택지 문장이 충분히 추출되지 않았으므로, 문제 이미지의 보기와 함께 확인해야 합니다. 판단할 때는 문제에서 요구한 기능, 성질, 방향, 기호 의미를 먼저 잡고 그 조건과 맞는 보기를 고릅니다.`;
 }
 
 function concreteReason(source, answerText, type) {
   const combined = `${source}\n${answerText}`;
+  const displayAnswer = cleanForDisplay(answerText);
+  if (/용융온도.*3400|3400°C|3400.?C|고용융점|필라멘트/.test(combined) && /텅스텐/.test(answerText)) {
+    return "텅스텐은 녹는점이 약 3400°C로 매우 높은 고융점 금속입니다. 열에 잘 견디고 높은 온도에서도 쉽게 녹지 않기 때문에 전구의 필라멘트, 고온용 공구 재료, 전극 재료 등에 쓰입니다. '고융점', '약 3400°C', '전구 필라멘트'가 함께 나오면 텅스텐으로 판단합니다.";
+  }
   if (/탄소강에 인\(P\)|인\(P\).*영향/.test(combined) && /연신율/.test(answerText)) {
     return "인(P)은 강도와 경도를 높일 수 있지만 재료를 취약하게 만들어 충격값과 연신율은 낮추는 원소입니다. 균열이 생기기 쉬워지는 방향으로 작용하므로, 연신율이 증가한다는 설명은 인의 일반적인 영향과 반대입니다.";
   }
@@ -197,6 +249,27 @@ function concreteReason(source, answerText, type) {
   }
   if (/철강의 5대 원소/.test(combined) && /아연/.test(answerText)) {
     return "철강의 5대 원소는 탄소(C), 규소(Si), 망간(Mn), 인(P), 황(S)입니다. 아연(Zn)은 도금이나 합금에서 따로 다루는 원소이지 철강의 5대 원소 목록에는 포함되지 않습니다. 따라서 5대 원소의 암기 목록과 보기를 직접 대조하면 판단할 수 있습니다.";
+  }
+  if (/유체.*흘러나오는 것을 방지|틈새나 볼트의 구멍/.test(combined)) {
+    return "캡 너트는 한쪽 끝이 막혀 있는 너트라서 볼트 끝이나 나사부를 덮어 줍니다. 유체가 나사 틈이나 볼트 구멍을 통해 새어 나오는 것을 막아야 한다는 단서가 나오면 캡 너트로 판단합니다.";
+  }
+  if (/특정한 모양|같은 치수|대량 생산|사용범위가 한정/.test(combined)) {
+    return "전용 공작기계는 특정 제품이나 특정 공정에 맞게 만든 기계입니다. 같은 모양과 같은 치수의 제품을 대량생산하기 쉽지만, 사용 범위가 좁아 다품종 소량생산에는 맞지 않는다는 단서가 나오면 전용 공작기계로 판단합니다.";
+  }
+  if (/나사의 유효지름|유효지름을 측정/.test(combined)) {
+    return "나사의 유효지름을 가장 정밀하게 측정하는 대표적인 방법은 삼침법입니다. 나사산 사이에 지름이 같은 세 개의 침을 끼우고 외측 치수를 재어 유효지름을 계산하므로, 정밀 측정 단서가 나오면 삼침법으로 판단합니다.";
+  }
+  if (/작은 덩어리.*고속|피로 강도|스프링|반복 하중/.test(combined)) {
+    return "숏피닝은 작은 강구나 금속 입자를 공작물 표면에 고속으로 분사해 표면에 압축 잔류응력을 만드는 가공법입니다. 이 압축응력 때문에 반복하중을 받는 스프링, 기어, 축의 피로강도를 높일 수 있습니다.";
+  }
+  if (/Tr\s*10\s*x\s*2|Tr10/.test(combined)) {
+    return "나사 기호에서 Tr은 미터 사다리꼴나사를 뜻합니다. Tr10 x 2는 호칭지름 10mm, 피치 2mm인 미터 사다리꼴나사라는 의미이므로, Tr 표시가 나오면 사다리꼴나사로 연결합니다.";
+  }
+  if (/CAD.*CAM.*출력장치|출력장치/.test(combined)) {
+    return "CAD/CAM 시스템에서 출력장치는 처리 결과를 밖으로 보여 주거나 내보내는 장치입니다. 모니터는 도면과 가공 정보를 화면으로 출력하므로 출력장치에 해당하고, 마우스·키보드·스캐너는 입력장치로 분류합니다.";
+  }
+  if (/서보모터.*조건/.test(combined)) {
+    return "CNC 공작기계의 서보모터는 잦은 시동·정지·역전이 가능하고, 응답성과 안정성이 좋아야 합니다. 위치를 정확히 제어해야 하므로 모터 자체의 안정성이 작아야 한다는 설명은 서보모터 조건과 맞지 않습니다.";
   }
   if (/담금질/.test(combined) && /서냉|연화/.test(answerText)) {
     return "담금질은 가열한 뒤 급랭하여 경도와 강도를 높이는 처리입니다. 서냉시켜 연하게 만드는 설명은 담금질이 아니라 풀림에 가깝습니다.";
@@ -333,7 +406,9 @@ function concreteReason(source, answerText, type) {
   if (type === "calculation") {
     return fallbackReason(combined, answerText, type);
   }
-  return topicHint(combined) || fallbackReason(combined, answerText, type);
+  const hint = topicHint(combined);
+  if (hint && displayAnswer) return `${displayAnswer}가 문제의 단서와 연결됩니다. ${hint}`;
+  return hint || fallbackReason(combined, answerText, type);
 }
 
 function solveGuide(type) {
@@ -359,18 +434,18 @@ function explanationFor(row) {
   const type = questionType(stem);
   const reason = concreteReason(text, answerText, type);
 
-  if (!answerText) return fallbackReason(text, "", type);
+  if (!answerText) return noAnswerTextReason(stem, answer);
 
   if (type === "negative") {
-    return `${reason} 따라서 이 보기는 다른 보기와 달리 원리, 용어, 결과 중 하나가 맞지 않는 설명으로 판단합니다.`;
+    return reason;
   }
   if (type === "positive") {
-    return `${reason} 따라서 보기에서 같은 조건을 말하는 항목을 고르고, 일부 조건만 맞거나 재료·코드·용도가 다른 항목은 제외합니다.`;
+    return reason;
   }
   if (type === "calculation") {
-    return `${reason} 계산 중에는 단위 변환과 반올림 위치를 먼저 확인해야 보기값과 어긋나지 않습니다.`;
+    return reason;
   }
-  return `${reason} 비슷한 보기가 있으면 기능, 재료, 코드, 측정 대상처럼 서로 달라지는 기준을 하나 잡아 비교합니다.`;
+  return reason;
 }
 
 const explanations = {};
