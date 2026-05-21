@@ -158,6 +158,7 @@ const state = {
   startedAt: null,
   lastResult: null,
   dashboardReturn: "examSelect",
+  dashboardMode: "students",
   dataStatus: "",
 };
 
@@ -245,7 +246,16 @@ function studentLabel(studentId) {
   return String(studentId);
 }
 
+function isStudentId(id) {
+  return USERS[String(id)]?.role === "student";
+}
+
+function isTeacherPersonalMode() {
+  return state.user?.role === "teacher" && state.dashboardMode === "personal";
+}
+
 function dashboardScopeLabel() {
+  if (isTeacherPersonalMode()) return `${state.user.id} 개인 분석`;
   if (state.user?.classPrefix === "11") return "1학년 1반";
   if (state.user?.classPrefix === "12") return "1학년 2반";
   if (state.user?.role === "teacher") return "전체";
@@ -253,14 +263,21 @@ function dashboardScopeLabel() {
 }
 
 function filterAttemptsForDashboard(attempts) {
+  if (isTeacherPersonalMode()) {
+    return attempts.filter((attempt) => String(attempt.studentId) === state.user.id);
+  }
   if (state.user?.role === "teacher") {
-    if (!state.user.classPrefix) return attempts;
-    return attempts.filter((attempt) => String(attempt.studentId).startsWith(state.user.classPrefix));
+    const studentAttempts = attempts.filter((attempt) => isStudentId(attempt.studentId));
+    if (!state.user.classPrefix) return studentAttempts;
+    return studentAttempts.filter((attempt) => String(attempt.studentId).startsWith(state.user.classPrefix));
   }
   return attempts.filter((attempt) => String(attempt.studentId) === state.user?.id);
 }
 
 function filterAccessForDashboard(logs) {
+  if (isTeacherPersonalMode()) {
+    return logs.filter((log) => String(log.userId) === state.user.id);
+  }
   const studentLogs = logs.filter((log) => log.role === "student");
   if (state.user?.role === "teacher") {
     if (!state.user.classPrefix) return studentLogs;
@@ -553,6 +570,9 @@ function renderResult(result) {
 
 async function renderDashboard() {
   state.dataStatus = "";
+  $("#dashboardScreen").classList.toggle("teacher-mode", state.user?.role === "teacher");
+  $("#teacherPersonalDashboardBtn").hidden = isTeacherPersonalMode();
+  $("#teacherStudentDashboardBtn").hidden = !isTeacherPersonalMode();
   const todayStart = startOfTodayIso();
   const todayAllAttempts = await loadAttempts({ since: todayStart, limit: 300 });
   const recentAllAttempts = await loadAttempts({ limit: 500 });
@@ -577,7 +597,11 @@ async function renderDashboard() {
     statusBox.textContent = state.dataStatus || `${connectionText} · ${dashboardScopeLabel()} 범위`;
   }
 
-  renderLearningRows(recentAttempts, recentAccessLog);
+  if (isTeacherPersonalMode()) {
+    renderPersonalAnalysisRows(recentAttempts);
+  } else {
+    renderLearningRows(recentAttempts, recentAccessLog);
+  }
   renderScoreDistribution(recentAttempts);
   renderStudyInsights(todayAttempts, recentAttempts, recentAccessLog);
   renderMissDashboard(recentAttempts);
@@ -698,6 +722,27 @@ function renderLearningRows(attempts, accessLog) {
     rows.appendChild(tr);
   });
   if (!metrics.length) rows.innerHTML = '<tr><td colspan="6">아직 학습 기록이 없습니다.</td></tr>';
+}
+
+function renderPersonalAnalysisRows(attempts) {
+  const rows = $("#studentRows");
+  rows.innerHTML = "";
+  attempts
+    .slice()
+    .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+    .forEach((attempt) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${attempt.examTitle}</td>
+        <td>-</td>
+        <td>1</td>
+        <td>${formatMinutes(attemptMinutes(attempt))}</td>
+        <td>${attempt.score} / ${attempt.score}</td>
+        <td>${new Date(attempt.submittedAt).toLocaleString()}</td>
+      `;
+      rows.appendChild(tr);
+    });
+  if (!attempts.length) rows.innerHTML = '<tr><td colspan="6">아직 개인 풀이 기록이 없습니다.</td></tr>';
 }
 
 function renderScoreDistribution(attempts) {
@@ -846,6 +891,7 @@ function logout() {
   state.user = null;
   state.currentExamId = null;
   state.lastResult = null;
+  state.dashboardMode = "students";
   $("#loginId").value = "";
   $("#loginPw").value = "";
   showScreen("login");
@@ -927,10 +973,30 @@ $("#chooseExamBtn").addEventListener("click", async () => {
   });
 });
 $("#dashboardBtn").addEventListener("click", async () => {
-  state.dashboardReturn = "result";
+  state.dashboardReturn = state.user?.role === "teacher" ? "teacherResult" : "result";
+  if (state.user?.role === "teacher") state.dashboardMode = "personal";
   await withLoading("대시보드 불러오는 중", async () => {
     await renderDashboard();
     showScreen("dashboard");
+  });
+});
+$("#teacherPracticeBtn").addEventListener("click", async () => {
+  state.dashboardReturn = "teacherPractice";
+  await withLoading("응시 기록 불러오는 중", async () => {
+    await renderExamSelect();
+    showScreen("examSelect");
+  });
+});
+$("#teacherPersonalDashboardBtn").addEventListener("click", async () => {
+  state.dashboardMode = "personal";
+  await withLoading("개인 분석 불러오는 중", async () => {
+    await renderDashboard();
+  });
+});
+$("#teacherStudentDashboardBtn").addEventListener("click", async () => {
+  state.dashboardMode = "students";
+  await withLoading("학생 현황 불러오는 중", async () => {
+    await renderDashboard();
   });
 });
 $("#backFromDashboardBtn").addEventListener("click", async () => {

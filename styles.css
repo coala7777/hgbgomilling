@@ -334,6 +334,7 @@ input {
 
 .exam-actions,
 .result-actions,
+.dashboard-actions,
 .dashboard-head,
 .select-head {
   display: flex;
@@ -456,6 +457,18 @@ input {
 .result-head,
 .dashboard-head {
   padding: 20px;
+}
+
+.dashboard-actions {
+  justify-content: flex-end;
+}
+
+.teacher-only {
+  display: none;
+}
+
+.teacher-mode .teacher-only {
+  display: inline-flex;
 }
 
 #resultMeta {
