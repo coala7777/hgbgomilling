@@ -138,6 +138,7 @@ const EXAMS = {
 };
 
 const EXPLANATIONS = window.HGBGO_EXPLANATIONS || {};
+const QUESTION_TEXTS = {};
 
 const USERS = {
   "0000": { password: "0000", role: "teacher", name: "교사" },
@@ -254,9 +255,99 @@ function modeLabel(mode = state.currentMode) {
   return mode === "practice" ? "연습용" : "실전용";
 }
 
+async function loadQuestionTexts() {
+  if (Object.keys(QUESTION_TEXTS).length) return;
+  try {
+    const response = await fetch("data/question-ocr.json");
+    if (!response.ok) throw new Error(`question OCR load failed: ${response.status}`);
+    const rows = await response.json();
+    rows.forEach((row) => {
+      const match = row.path?.match(/assets\/exams\/([^/]+)\/(\d+)\.png$/);
+      if (!match) return;
+      QUESTION_TEXTS[match[1]] ||= {};
+      QUESTION_TEXTS[match[1]][Number(match[2])] = row.text || "";
+    });
+  } catch (error) {
+    console.warn("Question OCR load failed", error);
+  }
+}
+
+function cleanQuestionText(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function questionStem(text) {
+  const normalized = cleanQuestionText(text);
+  const optionStart = normalized.search(/[①②③④]/);
+  return (optionStart >= 0 ? normalized.slice(0, optionStart) : normalized)
+    .replace(/^\d+\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function questionOptions(text) {
+  const normalized = cleanQuestionText(text)
+    .replace(/(^|\n)\s*[lI]\s+/g, "$1① ")
+    .replace(/(^|\n)\s*[@⑦]\s+/g, "$1② ")
+    .replace(/(^|\n)\s*[.·]\s+/g, "$1④ ");
+  const symbols = { "①": 1, "②": 2, "③": 3, "④": 4 };
+  const options = {};
+  [...normalized.matchAll(/([①②③④])\s*([\s\S]*?)(?=(?:\n?[①②③④]\s*)|$)/g)].forEach((match) => {
+    options[symbols[match[1]]] = match[2].replace(/\s+/g, " ").trim();
+  });
+  if (Object.keys(options).length >= 3) return options;
+
+  normalized.split("\n").map((line) => line.trim()).filter(Boolean).forEach((line) => {
+    const match = line.match(/^([1-4])[\).]?\s+(.+)$/);
+    if (match && !options[Number(match[1])]) options[Number(match[1])] = match[2].trim();
+  });
+  return options;
+}
+
+function questionKind(stem) {
+  if (/틀린|아닌|적절하지|옳지|부적합|잘못/.test(stem)) return "negative";
+  if (/옳은|맞는|적절|올바른|가장 알맞/.test(stem)) return "positive";
+  if (/값|구하|계산|몇|얼마|회전수|속도|이송|시간|길이|각도|테이퍼|공차|동력|토크|절삭/.test(stem)) return "calculation";
+  return "concept";
+}
+
+function concreteReason(source, answerText, kind) {
+  const combined = `${source}\n${answerText}`;
+  if (/담금질/.test(combined) && /서냉|연화/.test(answerText)) return "담금질은 가열한 뒤 급랭하여 경도와 강도를 높이는 처리입니다. 서냉시켜 연하게 만드는 설명은 담금질이 아니라 풀림에 가깝습니다.";
+  if (/CNC|NC|프로그램|G\d|M\d|준비기능|보조기능/.test(combined)) return "NC 문항은 주소 문자의 기능을 기준으로 판단합니다. G는 준비기능, M은 보조기능, X·Y·Z는 좌표, F는 이송, S는 주축속도, T는 공구 지령입니다.";
+  if (/절삭속도|회전수|rpm/.test(combined)) return "절삭속도와 회전수는 V = πDN / 1000 관계로 연결됩니다. 지름은 mm, 절삭속도는 m/min 단위인지 확인한 뒤 보기의 값과 맞춰야 합니다.";
+  if (/기어|모듈|잇수|피치원/.test(combined)) return "기어는 모듈 m, 잇수 Z, 피치원 지름 D의 관계 D = mZ가 기본입니다. 보기의 설명이나 계산값이 이 관계와 맞는지 확인하세요.";
+  if (/공차|끼워맞춤|허용차|한계치수/.test(combined)) return "공차는 최대치수와 최소치수를 따로 계산한 뒤 판단합니다. 구멍 기준인지 축 기준인지, 틈새인지 죔새인지가 보기 판정의 기준입니다.";
+  if (/마이크로미터|버니어|다이얼|게이지|측정/.test(combined)) return "측정기는 측정 대상과 최소눈금으로 구분합니다. 외측·내측·깊이·비교 측정 중 무엇을 묻는지 보면 맞는 기구가 좁혀집니다.";
+  if (/안전|보호구|작업장|점검|위험|재해/.test(combined)) return "안전 문항은 작업자의 사고 예방에 직접 관련되는지를 기준으로 봅니다. 생산 편의나 부가 설비보다 위험물, 전기, 조명, 보호구, 정리정돈이 우선입니다.";
+  if (/탄소강|합금강|황동|청동|주철|금속|연신율|경도|강도|취성/.test(combined)) return "재료 문항은 성분이나 열처리가 강도, 경도, 연신율, 취성에 어떤 영향을 주는지 묻습니다. 보기의 성질 변화가 재료의 일반적 특징과 맞는지 대조하세요.";
+  if (/밀링|엔드밀|커터|공구|드릴|리머|탭/.test(combined)) return "공구 문항은 공구의 형상과 용도를 연결하면 됩니다. 평면, 홈, 윤곽, 구멍, 나사 가공 중 어느 작업에 쓰는 공구인지가 핵심입니다.";
+  if (/도면|투상|제도|단면|중심선|숨은선|치수/.test(combined)) return "도면 문항은 KS 제도 규칙을 기준으로 선의 종류, 투상 방향, 단면 표시, 치수 기입 원칙이 맞는지 판단합니다.";
+  if (kind === "calculation") return "계산형 문항이므로 문제에서 요구한 값을 먼저 정하고, 단위를 맞춘 뒤 공식에 대입한 결과와 일치하는 보기를 고르면 됩니다.";
+  return "문제의 핵심 용어와 선택지의 정의, 목적, 방법, 결과가 서로 맞는지 비교하면 답을 고를 수 있습니다.";
+}
+
 function explanationFor(examId, qno) {
-  return EXPLANATIONS[examId]?.[qno]
-    || "문제의 핵심 용어와 보기의 조건을 먼저 표시해 보세요. 계산 문제라면 단위와 공식의 대응을, 개념 문제라면 목적·방법·결과가 서로 맞는지를 비교하면 정답 후보를 좁힐 수 있습니다. 해설은 정답 번호 대신 판단 기준만 제공하므로, 이 기준으로 보기를 다시 골라보세요.";
+  const generated = EXPLANATIONS[examId]?.[qno];
+  if (generated) return generated;
+
+  const source = QUESTION_TEXTS[examId]?.[qno];
+  const answer = EXAMS[examId]?.answers?.[qno - 1];
+  const answerText = questionOptions(source)[answer];
+  if (source && answerText) {
+    const stem = questionStem(source);
+    const kind = questionKind(stem);
+    const reason = concreteReason(source, answerText, kind);
+    if (kind === "negative") return `틀린 설명을 찾을 때는 보기의 핵심어와 결과가 실제 개념과 맞는지 대조해야 합니다. ${reason} 이 기준으로 보면 나머지 보기는 개념의 방향과 맞고, 이 설명만 원리나 용어가 어긋난다는 점을 찾아낼 수 있습니다.`;
+    if (kind === "positive") return `조건에 맞는 설명을 고를 때는 용어, 목적, 사용 조건이 모두 맞아야 합니다. ${reason} 따라서 보기에서 같은 핵심 조건을 말하는 문장을 찾고, 일부 조건만 맞거나 재료·코드·용도가 다른 보기는 제외하면 됩니다.`;
+    if (kind === "calculation") return `계산형 문항은 먼저 구해야 할 값을 정하고 단위를 통일해야 합니다. ${reason} 식에 넣기 전 mm, m/min, rpm, 분당 이송처럼 단위가 서로 맞는지 확인한 뒤 계산값과 같은 보기를 고르면 됩니다.`;
+    return `개념형 문항은 보기의 용어가 정의, 목적, 사용 상황과 맞는지 확인하면 됩니다. ${reason} 비슷한 용어가 함께 나오면 재료 조성, 가공 목적, 측정 대상처럼 구분 기준이 되는 단어를 먼저 표시해 보기를 좁히면 됩니다.`;
+  }
+  return "문제의 핵심 용어와 보기의 조건을 먼저 표시해 보세요. 계산 문제라면 단위와 공식의 대응을, 개념 문제라면 목적·방법·결과가 서로 맞는지를 비교하면 정답 후보를 좁힐 수 있습니다. 해설은 정답 번호 대신 판단 기준만 제공하므로, 이 기준으로 보기를 다시 골라보세요.";
 }
 
 function studentLabel(studentId) {
@@ -932,6 +1023,7 @@ async function login(id, password) {
   document.body.classList.toggle("teacher-session", user.role === "teacher");
   $("#loginMessage").textContent = "";
   await withLoading("데이터 연결 중", async () => {
+    await loadQuestionTexts();
     await recordAccess(state.user);
     if (user.role === "teacher") {
       state.dashboardReturn = "login";

@@ -23,8 +23,28 @@ function cleanText(text) {
     .trim();
 }
 
+function normalizeOptionMarkers(text) {
+  return cleanText(text)
+    .replace(/(^|\n)\s*[lI]\s+/g, "$1① ")
+    .replace(/(^|\n)\s*[@⑦]\s+/g, "$1② ")
+    .replace(/(^|\n)\s*[.·]\s+/g, "$1④ ");
+}
+
+function cleanForDisplay(text) {
+  return String(text || "")
+    .replace(/\bZm\b/g, "Zn")
+    .replace(/Y-2평면/g, "Y-Z평면")
+    .replace(/플리그 게이지/g, "플러그 게이지")
+    .replace(/603\s*\(/g, "G03 (")
+    .replace(/프로\s+그램/g, "프로그램")
+    .replace(/공작기\s+계/g, "공작기계")
+    .replace(/지령되어\s+야/g, "지령되어야")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function stemOf(text) {
-  const normalized = cleanText(text);
+  const normalized = normalizeOptionMarkers(text);
   const optionStart = normalized.search(/[①②③④]/);
   return (optionStart >= 0 ? normalized.slice(0, optionStart) : normalized)
     .replace(/^\d+\s*/, "")
@@ -33,7 +53,7 @@ function stemOf(text) {
 }
 
 function optionsOf(text) {
-  const normalized = cleanText(text);
+  const normalized = normalizeOptionMarkers(text);
   const matches = [...normalized.matchAll(/([①②③④])\s*([\s\S]*?)(?=(?:\n?[①②③④]\s*)|$)/g)];
   const symbols = { "①": 1, "②": 2, "③": 3, "④": 4 };
   const options = {};
@@ -117,8 +137,20 @@ function topicHint(text) {
 
 function concreteReason(source, answerText, type) {
   const combined = `${source}\n${answerText}`;
+  if (/탄소강에 인\(P\)|인\(P\).*영향/.test(combined) && /연신율/.test(answerText)) {
+    return "인(P)은 강도와 경도를 높일 수 있지만 재료를 취약하게 만들어 충격값과 연신율은 낮추는 원소입니다. 균열이 생기기 쉬워지는 방향으로 작용하므로, 연신율이 증가한다는 설명은 인의 일반적인 영향과 반대입니다.";
+  }
+  if (/황동/.test(combined) && /전도도/.test(answerText)) {
+    return "황동은 구리(Cu)에 아연(Zn)을 넣은 합금입니다. Zn 함량에 따라 연신율과 인장강도 같은 기계적 성질은 특정 조성에서 크게 나타날 수 있지만, 전기전도도는 구리에 비해 낮아지는 성질로 이해해야 합니다. 그래서 '전도도가 50% Zn에서 최소가 된다'처럼 특정 조성의 최소값으로 단정한 문장은 황동의 대표 성질 설명으로 보기 어렵습니다.";
+  }
+  if (/철강의 5대 원소/.test(combined) && /아연/.test(answerText)) {
+    return "철강의 5대 원소는 탄소(C), 규소(Si), 망간(Mn), 인(P), 황(S)입니다. 아연(Zn)은 도금이나 합금에서 따로 다루는 원소이지 철강의 5대 원소 목록에는 포함되지 않습니다. 따라서 5대 원소의 암기 목록과 보기를 직접 대조하면 판단할 수 있습니다.";
+  }
   if (/담금질/.test(combined) && /서냉|연화/.test(answerText)) {
     return "담금질은 가열한 뒤 급랭하여 경도와 강도를 높이는 처리입니다. 서냉시켜 연하게 만드는 설명은 담금질이 아니라 풀림에 가깝습니다.";
+  }
+  if (/질량효과/.test(answerText)) {
+    return "같은 강재라도 굵거나 두꺼운 재료는 중심부가 늦게 식고, 얇은 재료는 빨리 식습니다. 이처럼 재료의 크기 때문에 냉각속도와 담금질 결과가 달라지는 현상을 질량효과라고 합니다. 문제의 '굵기, 두께가 다르면 냉각속도가 달라진다'는 표현을 이 용어와 연결하면 됩니다.";
   }
   if (/불림/.test(combined) && /공냉|표준화/.test(answerText)) {
     return "불림은 가열 후 공랭하여 조직을 표준화하고 결정립을 고르게 만드는 처리입니다.";
@@ -128,6 +160,48 @@ function concreteReason(source, answerText, type) {
   }
   if (/뜨임/.test(combined) && /인성|취성/.test(answerText)) {
     return "뜨임은 담금질 뒤 다시 가열해 취성을 줄이고 인성을 보완하는 처리입니다.";
+  }
+  if (/하향 절삭|하향절삭/.test(combined) && /백\s*래시|백래시/.test(answerText)) {
+    return "하향 절삭은 커터 회전 방향과 테이블 이송 방향이 같아 절삭성이 좋지만, 절삭력이 테이블을 끌어당기는 방향으로 작용합니다. 이때 이송나사에 백래시가 있으면 테이블이 갑자기 빨려 들어가 공구나 공작물이 손상될 수 있습니다. 그래서 하향 절삭에서는 백래시 제거장치가 필요하다는 점을 기준으로 판단합니다.";
+  }
+  if (/작업평면.*Y-?Z|Y-2평면|YZ평면/.test(combined) && /G19/.test(answerText)) {
+    return "머시닝센터의 평면 선택 코드는 G17이 X-Y 평면, G18이 X-Z 평면, G19가 Y-Z 평면입니다. 문제에서 Y-Z 평면을 묻고 있으므로 세 평면 코드의 짝을 그대로 대응시키면 됩니다.";
+  }
+  if (/X-Y 작업평면|XY 작업평면|X-Y 평면/.test(combined) && /G17/.test(answerText)) {
+    return "머시닝센터에서 평면 선택은 G17, G18, G19로 구분합니다. G17은 X-Y 평면, G18은 X-Z 평면, G19는 Y-Z 평면이므로 문제의 X-Y 작업평면 조건과 코드를 직접 짝지어 확인하면 됩니다.";
+  }
+  if (/원 가공|원호|G41|D01/.test(combined) && /J-?20/.test(answerText)) {
+    return "원호보간에서 I는 현재 위치에서 원 중심까지의 X방향 거리, J는 Y방향 거리입니다. 도면에서 원 중심이 현재점보다 Y의 음의 방향에 있으면 J값은 음수가 됩니다. 따라서 중심 이동 방향과 부호를 먼저 판별한 뒤 보기의 J값과 비교합니다.";
+  }
+  if (/유효한G기능|유효한 G기능|실행되는.*G기능/.test(combined)) {
+    return "한 블록 안에 같은 그룹의 G코드가 여러 개 나오면 같은 그룹에서는 뒤에 지령된 코드가 최종적으로 유효합니다. 제시된 블록을 앞에서부터 읽되, 같은 기능군이 겹치는지 확인하고 마지막에 남는 이동 지령을 기준으로 판단합니다.";
+  }
+  if (/CNC 공작기계.*안전|안전사항/.test(combined) && /문을 열고|문을.*열/.test(answerText)) {
+    return "CNC 가공 중에는 칩 비산, 절삭유 튐, 공구 파손 위험이 있으므로 방호문을 닫고 운전해야 합니다. 가공 상태를 보겠다고 앞쪽 문을 열고 작업하는 행동은 작업자 보호 원칙에 맞지 않습니다.";
+  }
+  if (/작업 시작 전 점검사항|작업 시작 전/.test(combined) && /냉난방/.test(answerText)) {
+    return "작업 시작 전 점검은 사고와 직접 연결되는 위험물, 전기장치, 조명, 보호구, 정리정돈을 확인하는 절차입니다. 냉난방 설비 설치 여부는 작업 환경 편의에 가까워 일반적인 기계가공 안전 점검의 핵심 항목으로 보기 어렵습니다.";
+  }
+  if (/한계 게이지/.test(combined) && /플.*그 게이지|플러그 게이지|플리그 게이지/.test(answerText)) {
+    return "한계 게이지는 치수를 숫자로 읽는 측정기가 아니라, 제품 치수가 허용범위 안에 있는지 통과와 불통과로 판정하는 검사구입니다. 플러그 게이지는 구멍 치수의 허용 한계를 검사할 때 쓰는 대표적인 한계 게이지입니다.";
+  }
+  if (/7:\s*3황동|7\s*:\s*3황동/.test(combined) && /구리 70%.*아연 30%/.test(answerText)) {
+    return "7:3 황동은 구리 70%, 아연 30%의 황동을 뜻합니다. 황동은 구리와 아연의 합금이고, 청동은 구리와 주석의 합금이므로 주석, 니켈, 규소가 들어간 보기는 재료명이 달라집니다.";
+  }
+  if (/Cu-Sn|Cu Sn|구리.*주석|청동/.test(combined) && /청동/.test(answerText)) {
+    return "Cu-Sn 합금은 구리(Cu)와 주석(Sn)의 합금인 청동입니다. 황동은 Cu-Zn 합금이므로, 문제에 Sn이 보이면 청동으로 연결하는 것이 핵심입니다.";
+  }
+  if (/60%Cu.*40%.*Zn|40%2|문쯔|Muntz/i.test(combined) && /문쯔|문쯔 메탈|문쯔메탈/.test(answerText)) {
+    return "문쯔 메탈은 구리 약 60%, 아연 약 40%의 황동입니다. 열교환기, 파이프, 탄피처럼 문제에 60% Cu와 40% Zn 조성이 함께 나오면 황동의 종류 중 문쯔 메탈로 연결합니다.";
+  }
+  if (/담금질.*내마멸성|공작기계의 안내면|실린더/.test(combined) && /미하나이트/.test(answerText)) {
+    return "미하나이트 주철은 강도, 내마멸성, 기계가공성이 좋아 공작기계 안내면이나 기관 실린더처럼 마찰과 강도가 동시에 필요한 곳에 쓰입니다. 문제의 '내마멸성'과 '강도'라는 조건을 주철의 용도와 연결하면 됩니다.";
+  }
+  if (/와이어 컷|와이어 전극/.test(combined) && /납/.test(answerText)) {
+    return "와이어 컷 방전가공의 전극선은 전기가 잘 통하고 일정한 인장강도를 가져야 하므로 황동, 구리, 텅스텐 계열이 쓰입니다. 납은 무르고 전극선으로 유지하기 어려워 와이어 전극 재질로 적합하지 않습니다.";
+  }
+  if (/알루미늄/.test(combined) && /전연성이 나쁘|주조가 곤란/.test(answerText)) {
+    return "알루미늄은 가볍고 내식성이 좋으며 전성과 연성이 좋아 판재나 형재로 가공하기 쉽습니다. 순수 알루미늄은 전연성이 나쁘다고 보기 어렵기 때문에, 전연성이 나쁘다는 표현을 알루미늄의 대표 성질과 반대로 판단합니다.";
   }
   if (/CNC|NC|프로그램|G\d|M\d|준비기능|보조기능/.test(combined)) {
     return "NC 문항은 주소 문자의 기능을 기준으로 판단합니다. G는 준비기능, M은 보조기능, X·Y·Z는 좌표, F는 이송, S는 주축속도, T는 공구 지령입니다.";
@@ -188,25 +262,25 @@ function explanationFor(row) {
   const text = cleanText(row.text);
   const { examId, qno } = examAndQno(row.path);
   const answer = EXAMS[examId]?.answers?.[qno - 1];
-  const stem = stemOf(text);
+  const stem = cleanForDisplay(stemOf(text));
   const options = optionsOf(text);
-  const answerText = options[answer] || "";
+  const answerText = cleanForDisplay(options[answer] || "");
   const type = questionType(stem);
   const guide = solveGuide(type);
   const reason = concreteReason(text, answerText, type);
 
-  if (!answerText) return `${stem} ${guide} ${reason}`;
+  if (!answerText) return `${guide} ${reason}`;
 
   if (type === "negative") {
-    return `${stem} 이 문항은 틀린 설명을 찾는 문제입니다. 핵심이 되는 선택지는 '${answerText}'입니다. ${reason} 따라서 이 문장은 문제에서 요구한 '틀린 것'에 해당합니다.`;
+    return `틀린 설명을 찾을 때는 보기의 핵심어와 결과가 실제 개념과 맞는지 대조해야 합니다. ${reason} 이 기준으로 보면 나머지 보기는 개념의 방향과 맞고, 이 설명만 원리나 용어가 어긋난다는 점을 찾아낼 수 있습니다.`;
   }
   if (type === "positive") {
-    return `${stem} 이 문항은 조건에 맞는 설명을 고르는 문제입니다. 핵심이 되는 선택지는 '${answerText}'입니다. ${reason} 따라서 이 문장이 문제 조건에 가장 잘 맞습니다.`;
+    return `조건에 맞는 설명을 고를 때는 용어, 목적, 사용 조건이 모두 맞아야 합니다. ${reason} 따라서 보기에서 같은 핵심 조건을 말하는 문장을 찾고, 일부 조건만 맞거나 재료·코드·용도가 다른 보기는 제외하면 됩니다.`;
   }
   if (type === "calculation") {
-    return `${stem} 계산 결과와 맞춰야 하는 선택지는 '${answerText}'입니다. ${reason} 계산 과정에서 단위 변환을 먼저 확인하면 이 값으로 좁혀집니다.`;
+    return `계산형 문항은 먼저 구해야 할 값을 정하고 단위를 통일해야 합니다. ${reason} 식에 넣기 전 mm, m/min, rpm, 분당 이송처럼 단위가 서로 맞는지 확인한 뒤 계산값과 같은 보기를 고르면 됩니다.`;
   }
-  return `${stem} 핵심이 되는 선택지는 '${answerText}'입니다. ${reason} 이 설명이 문제의 용어와 조건에 맞는지 확인하면 답을 고를 수 있습니다.`;
+  return `개념형 문항은 보기의 용어가 정의, 목적, 사용 상황과 맞는지 확인하면 됩니다. ${reason} 비슷한 용어가 함께 나오면 재료 조성, 가공 목적, 측정 대상처럼 구분 기준이 되는 단어를 먼저 표시해 보기를 좁히면 됩니다.`;
 }
 
 const explanations = {};
