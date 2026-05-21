@@ -103,7 +103,7 @@
     const question = questionFromImage(img);
     if (!question?.examId || !question.qno || !textNode) return;
     const text = concreteExplanationFor(question.examId, question.qno);
-    if (text) textNode.textContent = text;
+    if (text && textNode.textContent !== text) textNode.textContent = text;
   }
 
   function replaceVisibleExplanations() {
