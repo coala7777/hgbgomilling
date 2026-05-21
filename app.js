@@ -139,6 +139,8 @@ const EXAMS = {
 
 const USERS = {
   "0000": { password: "0000", role: "teacher", name: "교사" },
+  "1199": { password: "1199", role: "teacher", name: "1학년 1반 담임", classPrefix: "11" },
+  "1299": { password: "1299", role: "teacher", name: "1학년 2반 담임", classPrefix: "12" },
 };
 
 for (let id = 1101; id <= 1121; id += 1) {
@@ -241,6 +243,30 @@ function currentExam() {
 
 function studentLabel(studentId) {
   return String(studentId);
+}
+
+function dashboardScopeLabel() {
+  if (state.user?.classPrefix === "11") return "1학년 1반";
+  if (state.user?.classPrefix === "12") return "1학년 2반";
+  if (state.user?.role === "teacher") return "전체";
+  return "나의 기록";
+}
+
+function filterAttemptsForDashboard(attempts) {
+  if (state.user?.role === "teacher") {
+    if (!state.user.classPrefix) return attempts;
+    return attempts.filter((attempt) => String(attempt.studentId).startsWith(state.user.classPrefix));
+  }
+  return attempts.filter((attempt) => String(attempt.studentId) === state.user?.id);
+}
+
+function filterAccessForDashboard(logs) {
+  const studentLogs = logs.filter((log) => log.role === "student");
+  if (state.user?.role === "teacher") {
+    if (!state.user.classPrefix) return studentLogs;
+    return studentLogs.filter((log) => String(log.userId).startsWith(state.user.classPrefix));
+  }
+  return studentLogs.filter((log) => String(log.userId) === state.user?.id);
 }
 
 function questionImagePath(qno, examId = state.currentExamId) {
@@ -530,19 +556,15 @@ async function renderDashboard() {
   const todayStart = startOfTodayIso();
   const todayAllAttempts = await loadAttempts({ since: todayStart, limit: 300 });
   const recentAllAttempts = await loadAttempts({ limit: 500 });
-  const todayAttempts = state.user?.role === "teacher"
-    ? todayAllAttempts
-    : todayAllAttempts.filter((attempt) => attempt.studentId === state.user.id);
-  const recentAttempts = state.user?.role === "teacher"
-    ? recentAllAttempts
-    : recentAllAttempts.filter((attempt) => attempt.studentId === state.user.id);
+  const todayAttempts = filterAttemptsForDashboard(todayAllAttempts);
+  const recentAttempts = filterAttemptsForDashboard(recentAllAttempts);
   const dashboardAttempts = state.user?.role === "teacher" ? todayAttempts : recentAttempts;
   const scores = dashboardAttempts.map((attempt) => attempt.score);
 
-  const todayAccessLog = await loadAccessLog({ since: todayStart, limit: 1000 });
-  const recentAccessLog = await loadAccessLog({ limit: 5000 });
-  const todayVisitorCount = new Set(todayAccessLog.filter((log) => log.role === "student").map((log) => log.userId)).size;
-  const totalVisitorCount = new Set(recentAccessLog.filter((log) => log.role === "student").map((log) => log.userId)).size;
+  const todayAccessLog = filterAccessForDashboard(await loadAccessLog({ since: todayStart, limit: 1000 }));
+  const recentAccessLog = filterAccessForDashboard(await loadAccessLog({ limit: 5000 }));
+  const todayVisitorCount = new Set(todayAccessLog.map((log) => log.userId)).size;
+  const totalVisitorCount = new Set(recentAccessLog.map((log) => log.userId)).size;
 
   $("#totalAttempts").textContent = String(dashboardAttempts.length);
   $("#averageScore").textContent = scores.length ? String(Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)) : "0";
@@ -551,7 +573,8 @@ async function renderDashboard() {
   $("#totalVisitors").textContent = String(totalVisitorCount);
   const statusBox = $("#dashboardStatus");
   if (statusBox) {
-    statusBox.textContent = state.dataStatus || (supabaseClient ? "Supabase 연결됨" : "로컬 저장 모드");
+    const connectionText = supabaseClient ? "Supabase 연결됨" : "로컬 저장 모드";
+    statusBox.textContent = state.dataStatus || `${connectionText} · ${dashboardScopeLabel()} 범위`;
   }
 
   renderLearningRows(recentAttempts, recentAccessLog);
