@@ -26,7 +26,7 @@ function cleanText(text) {
 function normalizeOptionMarkers(text) {
   return cleanText(text)
     .replace(/(^|\n)\s*[lI]\s+/g, "$1① ")
-    .replace(/(^|\n)\s*[@⑦]\s+/g, "$1② ")
+    .replace(/(^|\n)\s*⑦\s+/g, "$1② ")
     .replace(/(^|\n)\s*[.·]\s+/g, "$1④ ");
 }
 
@@ -54,19 +54,40 @@ function stemOf(text) {
 
 function optionsOf(text) {
   const normalized = normalizeOptionMarkers(text);
-  const matches = [...normalized.matchAll(/([①②③④])\s*([\s\S]*?)(?=(?:\n?[①②③④]\s*)|$)/g)];
   const symbols = { "①": 1, "②": 2, "③": 3, "④": 4 };
   const options = {};
-  matches.forEach((match) => {
-    options[symbols[match[1]]] = match[2].replace(/\s+/g, " ").trim();
+
+  const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
+  let current = null;
+  let fallbackNo = 1;
+  lines.forEach((line) => {
+    const marker = line.match(/^([①②③④@])\s*(.+)$/);
+    if (marker) {
+      const explicit = symbols[marker[1]];
+      const no = explicit || fallbackNo;
+      options[no] = marker[2].trim();
+      current = no;
+      fallbackNo = Math.min(5, no + 1);
+      while (options[fallbackNo]) fallbackNo += 1;
+      return;
+    }
+
+    const numeric = line.match(/^([1-4])[\).]?\s+(.+)$/);
+    if (numeric) {
+      current = Number(numeric[1]);
+      if (!options[current]) options[current] = numeric[2].trim();
+      fallbackNo = Math.min(5, current + 1);
+      return;
+    }
+
+    if (current && options[current]) options[current] += ` ${line}`;
   });
 
   if (Object.keys(options).length >= 3) return options;
 
-  const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
-  lines.forEach((line) => {
-    const match = line.match(/^([1-4])[\).]?\s+(.+)$/);
-    if (match && !options[Number(match[1])]) options[Number(match[1])] = match[2].trim();
+  const matches = [...normalized.matchAll(/([①②③④])\s*([\s\S]*?)(?=(?:\n?[①②③④]\s*)|$)/g)];
+  matches.forEach((match) => {
+    if (!options[symbols[match[1]]]) options[symbols[match[1]]] = match[2].replace(/\s+/g, " ").trim();
   });
   return options;
 }
@@ -132,7 +153,38 @@ const topicRules = [
 function topicHint(text) {
   const source = cleanText(text);
   const rule = topicRules.find((item) => item.test.test(source));
-  return rule?.hint || "문제의 핵심 용어를 표시하고, 각 보기가 그 용어의 정의·목적·방법·결과와 일치하는지 비교하세요. 계산형이면 단위와 공식의 적용 순서를 먼저 정리하면 선택지가 좁혀집니다.";
+  return rule?.hint || "";
+}
+
+function fallbackReason(source, answerText, type) {
+  const displayAnswer = cleanForDisplay(answerText);
+  const combined = cleanForDisplay(source);
+
+  if (/비중/.test(combined) && /철/.test(combined) && /7\.8/.test(displayAnswer)) {
+    return "철의 비중은 약 7.8입니다. 비중은 물의 밀도를 1로 보았을 때 재료가 물보다 몇 배 무거운지를 나타내는 값입니다. 기계재료에서 자주 비교하는 값은 알루미늄 약 2.7, 철 약 7.8, 구리 약 8.9이므로 철은 7.8에 가까운 값을 고르면 됩니다.";
+  }
+  if (/비중/.test(combined) && displayAnswer) {
+    return `비중은 물을 1로 보았을 때의 상대적인 무게입니다. 이 문항에서는 표준 재료값이 ${displayAnswer}로 정리되므로, 보기를 계산식으로 풀기보다 재료별 대표 비중값과 비교해 판단합니다.`;
+  }
+  if (/색깔|색상|표시색/.test(combined) && displayAnswer) {
+    return `색상 구분 문제는 규정된 표시색을 그대로 연결해야 합니다. 이 경우 기준이 되는 표시가 ${displayAnswer}이므로, 임의의 색감을 고르지 말고 안전·제도·작업 표준에서 정한 색상 대응을 확인합니다.`;
+  }
+  if (/기호|약호|명칭|무엇이라/.test(combined) && displayAnswer) {
+    return `${displayAnswer}는 이 조건에서 쓰는 표준 명칭 또는 기호입니다. 이런 문항은 설명 속 기능과 보기의 용어가 같은 대상을 가리키는지 확인하면 되며, 비슷한 이름이라도 기능이 다르면 제외해야 합니다.`;
+  }
+  if (/사용|쓰이는|용도|적합/.test(combined) && displayAnswer) {
+    return `${displayAnswer}는 제시된 작업 조건에 맞는 용도나 재료입니다. 용도 문제는 강도, 내마멸성, 가공성, 측정 대상처럼 조건으로 제시된 성질을 먼저 잡고 그 성질을 만족하는 보기를 고릅니다.`;
+  }
+  if (/공식|계산|구하|값|몇|회전수|이송|속도|시간|각도|공차/.test(combined) || type === "calculation") {
+    return `계산 결과는 ${displayAnswer}와 대응됩니다. 먼저 문제에서 구하는 값을 하나로 정하고, 주어진 수치의 단위를 맞춘 뒤 기본식에 대입합니다. 계산값과 보기값이 정확히 같지 않으면 가장 가까운 값 또는 반올림 조건을 확인합니다.`;
+  }
+  if (type === "negative" && displayAnswer) {
+    return `'${displayAnswer}'라는 설명은 문제의 개념과 어긋나는 부분입니다. 틀린 설명을 찾을 때는 보기의 핵심어와 결과를 분리해서, 원래 개념의 방향과 반대로 말한 부분이나 서로 연결되지 않는 용어를 찾아야 합니다.`;
+  }
+  if (displayAnswer) {
+    return `'${displayAnswer}'가 이 문항의 판단 기준입니다. 보기의 단어를 외워서 고르기보다, 그 용어가 나타내는 기능·조건·결과가 문제에서 요구한 상황과 같은지 확인해야 합니다.`;
+  }
+  return "보기의 핵심 조건을 하나씩 분리해 실제 개념과 맞는지 확인해야 합니다. 숫자가 있으면 단위를 먼저 맞추고, 용어가 있으면 정의와 사용 상황을 먼저 대조합니다.";
 }
 
 function concreteReason(source, answerText, type) {
@@ -203,6 +255,45 @@ function concreteReason(source, answerText, type) {
   if (/알루미늄/.test(combined) && /전연성이 나쁘|주조가 곤란/.test(answerText)) {
     return "알루미늄은 가볍고 내식성이 좋으며 전성과 연성이 좋아 판재나 형재로 가공하기 쉽습니다. 순수 알루미늄은 전연성이 나쁘다고 보기 어렵기 때문에, 전연성이 나쁘다는 표현을 알루미늄의 대표 성질과 반대로 판단합니다.";
   }
+  if (/연삭 가공의 일반적인 특징/.test(combined) && /온도가 낮다/.test(answerText)) {
+    return "연삭은 숫돌 입자가 아주 빠른 속도로 공작물을 깎는 가공이어서 접촉점의 온도가 높아지기 쉽습니다. 경화강 가공이 가능하고 가공면이 매끈한 것은 연삭의 특징이지만, 연삭점의 온도가 낮다는 설명은 실제 현상과 반대입니다.";
+  }
+  if (/연삭가공 방법/.test(combined) && /탄성연삭/.test(answerText)) {
+    return "연삭가공 방법에는 원통연삭, 평면연삭, 내면연삭처럼 공작물의 형상이나 가공면에 따른 분류가 쓰입니다. 탄성연삭은 이 기본 분류에 해당하는 표준적인 연삭가공 방법으로 보지 않습니다.";
+  }
+  if (/연삭 숫돌의 구성 요소/.test(combined) && /드레싱/.test(answerText)) {
+    return "연삭숫돌의 3요소는 숫돌 입자, 결합제, 기공입니다. 드레싱은 무뎌진 숫돌 표면을 정리해 절삭성을 회복시키는 작업이지 숫돌을 이루는 구성 요소가 아닙니다.";
+  }
+  if (/규격화 하는 이유/.test(combined) && /생산단가를 높여/.test(answerText)) {
+    return "제품 규격화의 목적은 품질 안정, 생산성 향상, 호환성 확보, 원가 절감입니다. 생산단가를 일부러 높이는 것은 규격화의 목적과 반대이므로 규격화의 이유로 볼 수 없습니다.";
+  }
+  if (/줄의 작업 방법/.test(combined) && /후진법/.test(answerText)) {
+    return "줄 작업은 줄을 앞으로 밀 때 절삭이 이루어지므로 전진 동작을 기준으로 힘을 주어야 합니다. 직진법, 사진법, 병진법은 줄 작업 방식으로 다루지만, 뒤로 당기는 후진법을 절삭 작업 방법으로 보지는 않습니다.";
+  }
+  if (/소성가공의 종류/.test(combined) && /호빙/.test(answerText)) {
+    return "소성가공은 재료를 깎아내지 않고 힘을 가해 영구 변형시키는 가공입니다. 단조, 압연, 인발은 소성변형을 이용하지만, 호빙은 기어 이를 절삭하는 가공이므로 소성가공에 속하지 않습니다.";
+  }
+  if (/V\s*벨트/.test(combined) && /설치면적이 넓어/.test(answerText)) {
+    return "V 벨트는 홈에 쐐기처럼 물리는 효과 때문에 평 벨트보다 작은 장력으로도 큰 동력을 전달하고 미끄럼이 적습니다. 그래서 설치 공간도 비교적 작게 잡을 수 있는데, 설치면적이 넓어 공간이 필요하다는 설명은 V 벨트의 장점과 맞지 않습니다.";
+  }
+  if (/래핑가공의 단점/.test(combined) && /대량생산이 어렵다/.test(answerText)) {
+    return "래핑은 매우 정밀하고 매끈한 표면을 얻는 마무리 가공입니다. 작업이 지저분하거나 랩제가 남아 마모를 일으킬 수 있는 점은 단점이지만, 문제에서 틀린 단점을 고르는 경우에는 실제 단점과 표현이 맞는지 비교해야 합니다.";
+  }
+  if (/SI단위계/.test(combined) && /dyne/.test(answerText)) {
+    return "SI 단위계에서 에너지의 단위는 줄(J)입니다. dyne은 CGS 단위계에서 힘을 나타내는 단위이므로, 에너지와 dyne을 연결한 설명은 물리량과 단위의 대응이 맞지 않습니다.";
+  }
+  if (/CAD.*명령/.test(combined) && /지우기|erase/.test(answerText)) {
+    return "CAD에서 erase는 잘못 그렸거나 필요 없는 요소를 삭제하는 명령입니다. 설명에 '불필요한 요소를 없앤다'고 되어 있으면 삭제 기능을 뜻하므로 erase와 연결해야 합니다.";
+  }
+  if (/스테인리스강의 주성분/.test(combined) && /A1|Al/.test(answerText)) {
+    return "스테인리스강은 철(Fe)을 바탕으로 크롬(Cr)을 많이 넣고, 종류에 따라 니켈(Ni) 등을 더해 내식성을 높인 강입니다. 알루미늄(Al)은 스테인리스강의 대표 주성분으로 보지 않으므로 주성분 목록에서 제외합니다.";
+  }
+  if (/연삭숫돌의 표시방법/.test(combined) && /V\s*:\s*조직/.test(answerText)) {
+    return "연삭숫돌 표시에서 앞의 문자와 숫자는 입자 종류, 입도, 결합도, 조직, 결합제 등을 순서대로 나타냅니다. V는 vitrified, 즉 비트리파이드 결합제를 뜻하므로 조직이라고 설명하면 표시 항목의 의미가 맞지 않습니다.";
+  }
+  if (/연동척/.test(combined) && /고정력이.*단동척보다 강하다/.test(answerText)) {
+    return "연동척은 3개의 조가 동시에 움직여 원형이나 정다각형 공작물을 빠르게 중심 맞춤하기 좋습니다. 하지만 각 조를 따로 강하게 조일 수 있는 단동척보다 고정력이 강하다고 보기는 어렵습니다.";
+  }
   if (/CNC|NC|프로그램|G\d|M\d|준비기능|보조기능/.test(combined)) {
     return "NC 문항은 주소 문자의 기능을 기준으로 판단합니다. G는 준비기능, M은 보조기능, X·Y·Z는 좌표, F는 이송, S는 주축속도, T는 공구 지령입니다.";
   }
@@ -240,9 +331,9 @@ function concreteReason(source, answerText, type) {
     return "도면 문항은 KS 제도 규칙을 기준으로 선의 종류, 투상 방향, 단면 표시, 치수 기입 원칙이 맞는지 판단합니다.";
   }
   if (type === "calculation") {
-    return "계산형 문항이므로 문제에서 요구한 값을 먼저 정하고, 단위를 맞춘 뒤 공식에 대입한 결과와 일치하는 보기를 고르면 됩니다.";
+    return fallbackReason(combined, answerText, type);
   }
-  return topicHint(combined);
+  return topicHint(combined) || fallbackReason(combined, answerText, type);
 }
 
 function solveGuide(type) {
@@ -266,21 +357,20 @@ function explanationFor(row) {
   const options = optionsOf(text);
   const answerText = cleanForDisplay(options[answer] || "");
   const type = questionType(stem);
-  const guide = solveGuide(type);
   const reason = concreteReason(text, answerText, type);
 
-  if (!answerText) return `${guide} ${reason}`;
+  if (!answerText) return fallbackReason(text, "", type);
 
   if (type === "negative") {
-    return `틀린 설명을 찾을 때는 보기의 핵심어와 결과가 실제 개념과 맞는지 대조해야 합니다. ${reason} 이 기준으로 보면 나머지 보기는 개념의 방향과 맞고, 이 설명만 원리나 용어가 어긋난다는 점을 찾아낼 수 있습니다.`;
+    return `${reason} 따라서 이 보기는 다른 보기와 달리 원리, 용어, 결과 중 하나가 맞지 않는 설명으로 판단합니다.`;
   }
   if (type === "positive") {
-    return `조건에 맞는 설명을 고를 때는 용어, 목적, 사용 조건이 모두 맞아야 합니다. ${reason} 따라서 보기에서 같은 핵심 조건을 말하는 문장을 찾고, 일부 조건만 맞거나 재료·코드·용도가 다른 보기는 제외하면 됩니다.`;
+    return `${reason} 따라서 보기에서 같은 조건을 말하는 항목을 고르고, 일부 조건만 맞거나 재료·코드·용도가 다른 항목은 제외합니다.`;
   }
   if (type === "calculation") {
-    return `계산형 문항은 먼저 구해야 할 값을 정하고 단위를 통일해야 합니다. ${reason} 식에 넣기 전 mm, m/min, rpm, 분당 이송처럼 단위가 서로 맞는지 확인한 뒤 계산값과 같은 보기를 고르면 됩니다.`;
+    return `${reason} 계산 중에는 단위 변환과 반올림 위치를 먼저 확인해야 보기값과 어긋나지 않습니다.`;
   }
-  return `개념형 문항은 보기의 용어가 정의, 목적, 사용 상황과 맞는지 확인하면 됩니다. ${reason} 비슷한 용어가 함께 나오면 재료 조성, 가공 목적, 측정 대상처럼 구분 기준이 되는 단어를 먼저 표시해 보기를 좁히면 됩니다.`;
+  return `${reason} 비슷한 보기가 있으면 기능, 재료, 코드, 측정 대상처럼 서로 달라지는 기준을 하나 잡아 비교합니다.`;
 }
 
 const explanations = {};
