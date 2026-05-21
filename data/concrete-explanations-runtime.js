@@ -63,7 +63,16 @@
 
   function concreteReason(source, answerText, kind) {
     const combined = `${source}\n${answerText}`;
+    if (/탄소강에 인\(P\)|인\(P\).*영향/.test(combined) && /연신율/.test(answerText)) return "인(P)은 강도와 경도를 높일 수 있지만 재료를 취약하게 만들어 충격값과 연신율은 떨어뜨립니다. 또한 가공 중 균열이 생기기 쉬워집니다. 따라서 연신율이 증가한다는 설명은 인의 일반적인 영향과 반대입니다.";
+    if (/하향 절삭|하향절삭/.test(combined) && /백\s*래시|백래시/.test(answerText)) return "하향 절삭은 커터 회전 방향과 테이블 이송 방향이 같아서 가공면과 공구 수명에는 유리하지만, 절삭력이 테이블을 끌어당기는 방향으로 작용합니다. 백래시가 있으면 공작물이 갑자기 말려 들어갈 수 있으므로 백래시 제거장치가 필요합니다.";
+    if (/철강의 5대 원소/.test(combined) && /아연/.test(answerText)) return "철강의 5대 원소는 탄소(C), 규소(Si), 망간(Mn), 인(P), 황(S)입니다. 아연은 철강의 5대 원소에 포함되지 않으므로, 5대 원소 목록을 기준으로 구분하면 됩니다.";
     if (/담금질/.test(combined) && /서냉|연화/.test(answerText)) return "담금질은 가열한 뒤 급랭하여 경도와 강도를 높이는 처리입니다. 서냉시켜 연하게 만드는 설명은 담금질이 아니라 풀림에 가깝습니다.";
+    if (/CNC 공작기계.*안전|안전사항/.test(combined) && /문을 열고|문을.*열/.test(answerText)) return "CNC 가공 중에는 칩이 튀거나 공구가 파손될 위험이 있으므로 문을 닫은 상태에서 확인해야 합니다. 가공 상태를 보려고 앞쪽 문을 열고 작업하는 행동은 작업자 보호 원칙에 맞지 않습니다.";
+    if (/작업평면.*Y-?Z|Y-2평면|YZ평면/.test(combined) && /G19/.test(answerText)) return "머시닝센터의 평면 선택 코드는 G17이 X-Y 평면, G18이 X-Z 평면, G19가 Y-Z 평면입니다. 문제에서 Y-Z 평면을 묻고 있으므로 평면 선택 코드의 짝을 기준으로 판단합니다.";
+    if (/원 가공|원호|G41|D01/.test(combined) && /J-?20/.test(answerText)) return "원호보간에서 I는 X방향 중심 이동량, J는 Y방향 중심 이동량입니다. 도면과 프로그램의 현재 위치에서 원호 중심이 Y방향 음의 쪽에 있으므로 J에 음수값을 넣어야 합니다. 먼저 중심 이동 방향이 X인지 Y인지 판단하는 것이 핵심입니다.";
+    if (/유효한G기능|유효한 G기능|실행되는.*G기능/.test(combined)) return "한 블록 안에 같은 그룹의 G코드가 여러 개 나오면 같은 그룹에서는 뒤에 나온 지령이 최종적으로 유효합니다. 제시된 블록에서 이동 관련 G기능을 순서대로 확인하고 마지막에 남는 지령을 고르면 됩니다.";
+    if (/한계 게이지/.test(combined) && /플.*그 게이지|플러그 게이지|플리그 게이지/.test(answerText)) return "한계 게이지는 치수를 눈금으로 읽는 측정기가 아니라, 제품이 허용 한계 안에 들어가는지 통과/불통과로 판정하는 게이지입니다. 플러그 게이지는 구멍 치수의 허용 범위를 검사하는 대표적인 한계 게이지입니다.";
+    if (/작업 시작 전 점검사항|작업 시작 전/.test(combined) && /냉난방/.test(answerText)) return "작업 시작 전 점검은 사고 예방과 직접 관련된 항목을 확인하는 절차입니다. 위험물, 전기 장치, 조명은 안전과 직접 관련되지만 냉난방 설비 설치 여부는 일반적인 기계가공 안전 점검의 핵심 항목으로 보기 어렵습니다.";
     if (/CNC|NC|프로그램|G\d|M\d|준비기능|보조기능/.test(combined)) return "NC 문항은 주소 문자의 기능을 기준으로 판단합니다. G는 준비기능, M은 보조기능, X·Y·Z는 좌표, F는 이송, S는 주축속도, T는 공구 지령입니다.";
     if (/절삭속도|회전수|rpm/.test(combined)) return "절삭속도와 회전수는 V = πDN / 1000 관계로 연결됩니다. 지름은 mm, 절삭속도는 m/min 단위인지 확인한 뒤 보기의 값과 맞춰야 합니다.";
     if (/기어|모듈|잇수|피치원/.test(combined)) return "기어는 모듈 m, 잇수 Z, 피치원 지름 D의 관계 D = mZ가 기본입니다. 보기의 설명이나 계산값이 이 관계와 맞는지 확인하세요.";
@@ -85,10 +94,10 @@
     const stem = questionStem(source);
     const kind = questionKind(stem);
     const reason = concreteReason(source, answerText, kind);
-    if (kind === "negative") return `${stem} 핵심 선택지는 '${answerText}'입니다. ${reason} 따라서 이 문장이 문제에서 요구한 틀린 설명입니다.`;
-    if (kind === "positive") return `${stem} 핵심 선택지는 '${answerText}'입니다. ${reason} 따라서 이 문장이 문제 조건에 가장 잘 맞습니다.`;
-    if (kind === "calculation") return `${stem} 계산 결과와 맞춰야 하는 선택지는 '${answerText}'입니다. ${reason}`;
-    return `${stem} 핵심 선택지는 '${answerText}'입니다. ${reason}`;
+    if (kind === "negative") return `${stem} 이 문제는 틀린 설명을 찾는 문항입니다. 핵심 선택지는 '${answerText}'입니다. ${reason} 따라서 다른 보기가 개념에 맞는지 확인한 뒤, 이 문장이 문제에서 요구한 틀린 설명임을 판단하면 됩니다.`;
+    if (kind === "positive") return `${stem} 이 문제는 조건에 맞는 설명을 찾는 문항입니다. 핵심 선택지는 '${answerText}'입니다. ${reason} 따라서 보기의 용어와 조건이 문제에서 묻는 내용과 정확히 대응되는지 확인하면 됩니다.`;
+    if (kind === "calculation") return `${stem} 계산 결과와 맞춰야 하는 선택지는 '${answerText}'입니다. ${reason} 먼저 문제에서 구하라는 값을 정하고, 단위를 맞춘 뒤 계산값과 보기를 비교하면 됩니다.`;
+    return `${stem} 핵심 선택지는 '${answerText}'입니다. ${reason} 이 문항은 보기의 용어가 문제의 정의, 목적, 사용 상황과 맞는지 대조하는 방식으로 풀면 됩니다.`;
   }
 
   function questionFromImage(img) {
