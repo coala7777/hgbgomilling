@@ -571,7 +571,6 @@ function renderResult(result) {
 async function renderDashboard() {
   state.dataStatus = "";
   $("#dashboardScreen").classList.toggle("teacher-mode", state.user?.role === "teacher");
-  $("#teacherStudentDashboardBtn").hidden = !isTeacherPersonalMode();
   $("#backFromDashboardBtn").textContent = state.user?.role === "teacher" ? "로그아웃" : "돌아가기";
   const todayStart = startOfTodayIso();
   const todayAllAttempts = await loadAttempts({ since: todayStart, limit: 300 });
@@ -987,12 +986,6 @@ $("#teacherPracticeBtn").addEventListener("click", async () => {
   await withLoading("응시 기록 불러오는 중", async () => {
     await renderExamSelect();
     showScreen("examSelect");
-  });
-});
-$("#teacherStudentDashboardBtn").addEventListener("click", async () => {
-  state.dashboardMode = "students";
-  await withLoading("학생 현황 불러오는 중", async () => {
-    await renderDashboard();
   });
 });
 $("#examSelectDashboardBtn").addEventListener("click", async () => {
