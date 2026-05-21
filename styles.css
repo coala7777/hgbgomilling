@@ -337,6 +337,35 @@ input {
   color: white;
 }
 
+.explanation-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -4px 0 16px;
+  padding: 16px;
+  background: #fff8ea;
+  border: 1px solid #edc879;
+  border-radius: 8px;
+}
+
+.explanation-panel[hidden] {
+  display: none;
+}
+
+.explanation-panel strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #8a5310;
+}
+
+.explanation-panel p,
+.wrong-explanation p {
+  margin: 0;
+  line-height: 1.6;
+  font-weight: 700;
+}
+
 .exam-actions,
 .result-actions,
 .select-actions,
@@ -393,6 +422,12 @@ input {
 
 .exam-card button {
   width: 100%;
+}
+
+.exam-card-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .exam-actions button {
@@ -527,6 +562,19 @@ input {
   padding: 6px 10px;
   border-radius: 6px;
   background: #eef3f5;
+}
+
+.wrong-explanation {
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff8ea;
+  border: 1px solid #edc879;
+}
+
+.wrong-explanation strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #8a5310;
 }
 
 .stats-grid {
@@ -755,6 +803,11 @@ th {
     padding: 0;
     background: transparent;
     backdrop-filter: none;
+  }
+
+  .explanation-panel {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .stats-grid {

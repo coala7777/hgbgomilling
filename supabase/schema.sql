@@ -2,6 +2,7 @@ create table if not exists public.cbt_attempts (
   id uuid primary key default gen_random_uuid(),
   exam_id text not null,
   exam_title text not null,
+  mode text not null default 'real' check (mode in ('practice', 'real')),
   student_id text not null,
   started_at timestamptz not null,
   submitted_at timestamptz not null default now(),
@@ -10,6 +11,15 @@ create table if not exists public.cbt_attempts (
   items jsonb not null,
   created_at timestamptz not null default now()
 );
+
+alter table public.cbt_attempts
+  add column if not exists mode text not null default 'real';
+
+alter table public.cbt_attempts
+  drop constraint if exists cbt_attempts_mode_check;
+
+alter table public.cbt_attempts
+  add constraint cbt_attempts_mode_check check (mode in ('practice', 'real'));
 
 create table if not exists public.cbt_access_logs (
   id uuid primary key default gen_random_uuid(),

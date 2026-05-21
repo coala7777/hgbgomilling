@@ -137,6 +137,8 @@ const EXAMS = {
   },
 };
 
+const EXPLANATIONS = window.HGBGO_EXPLANATIONS || {};
+
 const USERS = {
   "0000": { password: "0000", role: "teacher", name: "교사" },
   "1199": { password: "1199", role: "teacher", name: "1학년 1반 담임", classPrefix: "11" },
@@ -153,8 +155,10 @@ for (let id = 1201; id <= 1221; id += 1) {
 const state = {
   user: null,
   currentExamId: null,
+  currentMode: "real",
   current: 1,
   selections: Array(QUESTION_COUNT).fill(null),
+  practiceFeedback: null,
   startedAt: null,
   lastResult: null,
   dashboardReturn: "examSelect",
@@ -242,6 +246,19 @@ function currentExam() {
   return EXAMS[state.currentExamId];
 }
 
+function isPracticeMode() {
+  return state.currentMode === "practice";
+}
+
+function modeLabel(mode = state.currentMode) {
+  return mode === "practice" ? "연습용" : "실전용";
+}
+
+function explanationFor(examId, qno) {
+  return EXPLANATIONS[examId]?.[qno]
+    || "문제의 핵심 용어와 보기의 조건을 먼저 표시해 보세요. 계산 문제라면 단위와 공식의 대응을, 개념 문제라면 목적·방법·결과가 서로 맞는지를 비교하면 정답 후보를 좁힐 수 있습니다. 해설은 정답 번호 대신 판단 기준만 제공하므로, 이 기준으로 보기를 다시 골라보세요.";
+}
+
 function studentLabel(studentId) {
   return String(studentId);
 }
@@ -308,6 +325,7 @@ function normalizeAttempt(row) {
     id: row.id,
     examId: row.exam_id ?? row.examId,
     examTitle: row.exam_title ?? row.examTitle,
+    mode: row.mode || "real",
     studentId: row.student_id ?? row.studentId,
     startedAt: row.started_at ?? row.startedAt,
     submittedAt: row.submitted_at ?? row.submittedAt,
@@ -342,7 +360,7 @@ function supabaseFailureMessage(error, label) {
 async function loadAttempts(options = {}) {
   const { since, limit = 500 } = options;
   if (!supabaseClient) {
-    let rows = readStore(ATTEMPTS_KEY).sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    let rows = readStore(ATTEMPTS_KEY).map(normalizeAttempt).sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
     if (since) rows = rows.filter((row) => new Date(row.submittedAt) >= new Date(since));
     return rows.slice(0, limit);
   }
@@ -375,6 +393,7 @@ async function saveAttempt(result) {
   const { error } = await supabaseClient.from("cbt_attempts").insert({
     exam_id: result.examId,
     exam_title: result.examTitle,
+    mode: result.mode,
     student_id: result.studentId,
     started_at: result.startedAt,
     submitted_at: result.submittedAt,
@@ -437,16 +456,25 @@ async function renderExamSelect() {
   const allAttempts = await loadAttempts({ limit: 500 });
 
   Object.entries(EXAMS).forEach(([examId, exam]) => {
-    const attempts = allAttempts.filter((attempt) => attempt.studentId === state.user.id && attempt.examId === examId);
+    const attempts = allAttempts.filter((attempt) => (
+      attempt.studentId === state.user.id
+      && attempt.examId === examId
+      && attempt.mode === "real"
+    ));
     const latest = attempts[0];
     const card = document.createElement("article");
     card.className = "exam-card";
     card.innerHTML = `
       <h3>${exam.title}</h3>
-      <p>${QUESTION_COUNT}문항${latest ? ` · 최근 ${latest.score}점` : " · 미응시"}</p>
-      <button class="primary-btn" type="button">시험 시작</button>
+      <p>${QUESTION_COUNT}문항${latest ? ` · 최근 실전 ${latest.score}점` : " · 실전 미응시"}</p>
+      <div class="exam-card-actions">
+        <button class="secondary-btn" type="button" data-mode="practice">연습용</button>
+        <button class="primary-btn" type="button" data-mode="real">실전용</button>
+      </div>
     `;
-    card.querySelector("button").addEventListener("click", () => startExam(examId));
+    card.querySelectorAll("button").forEach((button) => {
+      button.addEventListener("click", () => startExam(examId, button.dataset.mode));
+    });
     list.appendChild(card);
   });
 }
@@ -482,22 +510,32 @@ function updateProgress() {
 function renderQuestion() {
   const qno = state.current;
   const exam = currentExam();
-  $("#studentBadge").textContent = `${studentLabel(state.user.id)} · ${exam.title}`;
+  $("#studentBadge").textContent = `${studentLabel(state.user.id)} · ${exam.title} · ${modeLabel()}`;
   $("#questionTitle").textContent = `${qno}번`;
   $("#questionImage").src = questionImagePath(qno);
   $("#questionImage").alt = `${exam.title} ${qno}번 문제`;
   $$(".choice-btn").forEach((btn) => {
     btn.classList.toggle("selected", Number(btn.dataset.choice) === state.selections[qno - 1]);
   });
+  const feedback = state.practiceFeedback?.qno === qno ? state.practiceFeedback : null;
+  const explanationPanel = $("#explanationPanel");
+  explanationPanel.hidden = !feedback;
+  if (feedback) {
+    $("#explanationTitle").textContent = `${qno}번 풀이 힌트`;
+    $("#explanationText").textContent = feedback.text;
+  }
   $("#prevBtn").disabled = qno === 1;
   $("#nextBtn").disabled = qno === QUESTION_COUNT;
+  $("#submitBtn").textContent = isPracticeMode() ? "연습 마치기" : "채점하기";
   updateProgress();
 }
 
-function startExam(examId) {
+function startExam(examId, mode = state.currentMode || "real") {
   state.currentExamId = examId;
+  state.currentMode = mode;
   state.current = 1;
   state.selections = Array(QUESTION_COUNT).fill(null);
+  state.practiceFeedback = null;
   state.startedAt = new Date().toISOString();
   renderQuestionMap();
   renderQuestion();
@@ -515,6 +553,7 @@ function scoreExam() {
     id: typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
     examId: state.currentExamId,
     examTitle: currentExam().title,
+    mode: state.currentMode,
     studentId: state.user.id,
     startedAt: state.startedAt,
     submittedAt: new Date().toISOString(),
@@ -541,8 +580,12 @@ async function submitExam() {
 }
 
 function renderResult(result) {
-  $("#scoreText").textContent = `${result.score}점 / ${result.correctCount}개 정답`;
-  $("#resultMeta").textContent = `${result.examTitle} · ${studentLabel(result.studentId)} · 제출 ${new Date(result.submittedAt).toLocaleString()}`;
+  if (result.mode === "practice") {
+    $("#scoreText").textContent = "연습 기록이 저장되었습니다";
+  } else {
+    $("#scoreText").textContent = `${result.score}점 / ${result.correctCount}개 정답`;
+  }
+  $("#resultMeta").textContent = `${result.examTitle} · ${modeLabel(result.mode)} · ${studentLabel(result.studentId)} · 제출 ${new Date(result.submittedAt).toLocaleString()}`;
   const wrongItems = result.items.filter((item) => !item.correct);
   const wrongList = $("#wrongList");
   wrongList.innerHTML = "";
@@ -560,9 +603,12 @@ function renderResult(result) {
       <div class="wrong-meta">
         <span>${item.qno}번</span>
         <span>선택 ${selectedText}</span>
-        <span>정답 ${item.answer}번</span>
       </div>
       <img src="${questionImagePath(item.qno, result.examId)}" alt="${result.examTitle} ${item.qno}번 문제">
+      <div class="wrong-explanation">
+        <strong>풀이 힌트</strong>
+        <p>${explanationFor(result.examId, item.qno)}</p>
+      </div>
     `;
     wrongList.appendChild(card);
   });
@@ -577,7 +623,9 @@ async function renderDashboard() {
   const recentAllAttempts = await loadAttempts({ limit: 500 });
   const todayAttempts = filterAttemptsForDashboard(todayAllAttempts);
   const recentAttempts = filterAttemptsForDashboard(recentAllAttempts);
-  const dashboardAttempts = state.user?.role === "teacher" ? todayAttempts : recentAttempts;
+  const todayRealAttempts = todayAttempts.filter((attempt) => attempt.mode === "real");
+  const recentRealAttempts = recentAttempts.filter((attempt) => attempt.mode === "real");
+  const dashboardAttempts = state.user?.role === "teacher" ? todayRealAttempts : recentRealAttempts;
   const scores = dashboardAttempts.map((attempt) => attempt.score);
 
   const todayAccessLog = filterAccessForDashboard(await loadAccessLog({ since: todayStart, limit: 1000 }));
@@ -597,13 +645,13 @@ async function renderDashboard() {
   }
 
   if (isTeacherPersonalMode()) {
-    renderPersonalAnalysisRows(recentAttempts);
+    renderPersonalAnalysisRows(recentAttempts, recentRealAttempts);
   } else {
-    renderLearningRows(recentAttempts, recentAccessLog);
+    renderLearningRows(recentAttempts, recentRealAttempts, recentAccessLog);
   }
-  renderScoreDistribution(recentAttempts);
-  renderStudyInsights(todayAttempts, recentAttempts, recentAccessLog);
-  renderMissDashboard(recentAttempts);
+  renderScoreDistribution(recentRealAttempts);
+  renderStudyInsights(todayRealAttempts, recentRealAttempts, recentAccessLog);
+  renderMissDashboard(recentRealAttempts);
 }
 
 function renderTodayScoreRows(attempts) {
@@ -652,7 +700,7 @@ function renderStudentSummaryRows(attempts) {
   if (!byStudentExam.size) rows.innerHTML = '<tr><td colspan="5">아직 기록이 없습니다.</td></tr>';
 }
 
-function buildStudentMetrics(attempts, accessLog) {
+function buildStudentMetrics(attempts, scoreAttempts, accessLog) {
   const metrics = new Map();
   Object.entries(USERS)
     .filter(([, user]) => user.role === "student")
@@ -660,7 +708,7 @@ function buildStudentMetrics(attempts, accessLog) {
       metrics.set(id, {
         id,
         accessCount: 0,
-        attemptCount: 0,
+        realAttemptCount: 0,
         totalMinutes: 0,
         averageScore: 0,
         bestScore: 0,
@@ -684,8 +732,14 @@ function buildStudentMetrics(attempts, accessLog) {
     const id = String(attempt.studentId);
     if (!metrics.has(id)) return;
     const row = metrics.get(id);
-    row.attemptCount += 1;
     row.totalMinutes += attemptMinutes(attempt);
+  });
+
+  scoreAttempts.forEach((attempt) => {
+    const id = String(attempt.studentId);
+    if (!metrics.has(id)) return;
+    const row = metrics.get(id);
+    row.realAttemptCount += 1;
     row.scores.push(Number(attempt.score) || 0);
   });
 
@@ -697,23 +751,23 @@ function buildStudentMetrics(attempts, accessLog) {
   });
 
   return [...metrics.values()]
-    .filter((row) => row.accessCount || row.attemptCount)
+    .filter((row) => row.accessCount || row.realAttemptCount || row.totalMinutes)
     .sort((a, b) => {
       if (b.totalMinutes !== a.totalMinutes) return b.totalMinutes - a.totalMinutes;
       return a.id.localeCompare(b.id);
     });
 }
 
-function renderLearningRows(attempts, accessLog) {
+function renderLearningRows(attempts, scoreAttempts, accessLog) {
   const rows = $("#studentRows");
   rows.innerHTML = "";
-  const metrics = buildStudentMetrics(attempts, accessLog);
+  const metrics = buildStudentMetrics(attempts, scoreAttempts, accessLog);
   metrics.forEach((row) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${studentLabel(row.id)}</td>
       <td>${row.accessCount}</td>
-      <td>${row.attemptCount}</td>
+      <td>${row.realAttemptCount}</td>
       <td>${formatMinutes(row.totalMinutes)}</td>
       <td>${row.averageScore} / ${row.bestScore}</td>
       <td>${row.lastAccess ? row.lastAccess.toLocaleString() : "-"}</td>
@@ -723,7 +777,7 @@ function renderLearningRows(attempts, accessLog) {
   if (!metrics.length) rows.innerHTML = '<tr><td colspan="6">아직 학습 기록이 없습니다.</td></tr>';
 }
 
-function renderPersonalAnalysisRows(attempts) {
+function renderPersonalAnalysisRows(attempts, scoreAttempts) {
   const rows = $("#studentRows");
   rows.innerHTML = "";
   attempts
@@ -732,11 +786,11 @@ function renderPersonalAnalysisRows(attempts) {
     .forEach((attempt) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${attempt.examTitle}</td>
+        <td>${attempt.examTitle} (${modeLabel(attempt.mode)})</td>
         <td>-</td>
-        <td>1</td>
+        <td>${attempt.mode === "real" ? 1 : 0}</td>
         <td>${formatMinutes(attemptMinutes(attempt))}</td>
-        <td>${attempt.score} / ${attempt.score}</td>
+        <td>${attempt.mode === "real" ? `${attempt.score} / ${attempt.score}` : "-"}</td>
         <td>${new Date(attempt.submittedAt).toLocaleString()}</td>
       `;
       rows.appendChild(tr);
@@ -771,8 +825,8 @@ function renderScoreDistribution(attempts) {
 function renderStudyInsights(todayAttempts, recentAttempts, accessLog) {
   const box = $("#studyInsights");
   if (!box) return;
-  const metrics = buildStudentMetrics(recentAttempts, accessLog);
-  const accessedNoAttempt = metrics.filter((row) => row.accessCount && !row.attemptCount).length;
+  const metrics = buildStudentMetrics(recentAttempts, recentAttempts, accessLog);
+  const accessedNoAttempt = metrics.filter((row) => row.accessCount && !row.realAttemptCount).length;
   const scores = recentAttempts.map((attempt) => Number(attempt.score) || 0);
   const average = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
   const lowScoreCount = scores.filter((score) => score < 60).length;
@@ -791,7 +845,7 @@ function renderStudyInsights(todayAttempts, recentAttempts, accessLog) {
     insights.push(`접속은 했지만 제출 기록이 없는 학생 ID가 ${accessedNoAttempt}명 있습니다. 기기 문제인지, 문제 풀이 중 이탈인지 확인해보면 좋습니다.`);
   }
   if (todayAttempts.length) {
-    insights.push(`오늘 제출된 기록은 ${todayAttempts.length}회입니다. 같은 회차 반복 응시자는 점수 변화 폭을 기준으로 개별 피드백을 주기 좋습니다.`);
+    insights.push(`오늘 실전 제출 기록은 ${todayAttempts.length}회입니다. 같은 회차 반복 응시자는 점수 변화 폭을 기준으로 개별 피드백을 주기 좋습니다.`);
   }
 
   box.innerHTML = insights.map((text) => `<p>${text}</p>`).join("");
@@ -851,15 +905,18 @@ function renderMissDashboard(attempts) {
 
   topMisses.forEach((item, index) => {
     const exam = EXAMS[item.examId];
-    const answer = exam.answers[item.qno - 1];
     const card = document.createElement("article");
     card.className = "miss-card";
     card.innerHTML = `
       <div class="miss-card-head">
         <strong>${index + 1}. ${exam.title} ${item.qno}번</strong>
-        <span>${item.count}회 오답 · 정답 ${answer}번</span>
+        <span>${item.count}회 오답</span>
       </div>
       <img src="${questionImagePath(item.qno, item.examId)}" alt="${exam.title} ${item.qno}번 문제">
+      <div class="wrong-explanation">
+        <strong>지도 힌트</strong>
+        <p>${explanationFor(item.examId, item.qno)}</p>
+      </div>
     `;
     box.appendChild(card);
   });
@@ -890,6 +947,8 @@ async function login(id, password) {
 function logout() {
   state.user = null;
   state.currentExamId = null;
+  state.currentMode = "real";
+  state.practiceFeedback = null;
   state.lastResult = null;
   state.dashboardMode = "students";
   document.body.classList.remove("teacher-session");
@@ -949,7 +1008,17 @@ $("#logoutBtn").addEventListener("click", logout);
 
 $$(".choice-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
-    state.selections[state.current - 1] = Number(btn.dataset.choice);
+    const choice = Number(btn.dataset.choice);
+    if (isPracticeMode() && choice !== currentExam().answers[state.current - 1]) {
+      state.practiceFeedback = {
+        qno: state.current,
+        text: explanationFor(state.currentExamId, state.current),
+      };
+      renderQuestion();
+      return;
+    }
+    state.practiceFeedback = null;
+    state.selections[state.current - 1] = choice;
     if (state.current < QUESTION_COUNT) state.current += 1;
     renderQuestion();
   });
@@ -966,7 +1035,11 @@ $("#nextBtn").addEventListener("click", () => {
 });
 
 $("#submitBtn").addEventListener("click", submitExam);
-$("#retryBtn").addEventListener("click", () => startExam(state.currentExamId));
+$("#tryAgainBtn").addEventListener("click", () => {
+  state.practiceFeedback = null;
+  renderQuestion();
+});
+$("#retryBtn").addEventListener("click", () => startExam(state.currentExamId, state.currentMode));
 $("#chooseExamBtn").addEventListener("click", async () => {
   await withLoading("응시 기록 불러오는 중", async () => {
     await renderExamSelect();

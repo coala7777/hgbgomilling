@@ -77,6 +77,14 @@
         <button class="choice-btn" type="button" data-choice="4">④</button>
       </nav>
 
+      <aside class="explanation-panel" id="explanationPanel" aria-live="polite" hidden>
+        <div>
+          <strong id="explanationTitle">풀이 힌트</strong>
+          <p id="explanationText"></p>
+        </div>
+        <button class="secondary-btn" id="tryAgainBtn" type="button">다시 선택</button>
+      </aside>
+
       <div class="exam-actions">
         <button class="secondary-btn" id="prevBtn" type="button">이전</button>
         <button class="secondary-btn" id="nextBtn" type="button">다음</button>
@@ -120,15 +128,15 @@
 
       <div class="stats-grid teacher-stats">
         <div class="stat">
-          <span>오늘 응시</span>
+          <span>오늘 실전</span>
           <strong id="totalAttempts">0</strong>
         </div>
         <div class="stat">
-          <span>오늘 평균</span>
+          <span>실전 평균</span>
           <strong id="averageScore">0</strong>
         </div>
         <div class="stat">
-          <span>오늘 최고</span>
+          <span>실전 최고</span>
           <strong id="bestScore">0</strong>
         </div>
         <div class="stat">
@@ -151,9 +159,9 @@
               <tr>
                 <th>학생 ID</th>
                 <th>접속수</th>
-                <th>응시수</th>
+                <th>실전 응시</th>
                 <th>학습시간</th>
-                <th>평균 / 최고</th>
+                <th>실전 평균 / 최고</th>
                 <th>최근 접속</th>
               </tr>
             </thead>
@@ -210,6 +218,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
+  <script src="data/explanations.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
