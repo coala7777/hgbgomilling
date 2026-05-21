@@ -46,7 +46,10 @@
           <p class="section-label">회차 선택</p>
           <h2 id="welcomeText">응시할 문제를 선택하세요</h2>
         </div>
-        <button class="secondary-btn" id="logoutBtn" type="button">로그아웃</button>
+        <div class="select-actions">
+          <button class="secondary-btn teacher-only" id="examSelectDashboardBtn" type="button">대시보드로</button>
+          <button class="secondary-btn" id="logoutBtn" type="button">로그아웃</button>
+        </div>
       </div>
       <div class="exam-list" id="examList"></div>
     </section>
@@ -77,6 +80,7 @@
       <div class="exam-actions">
         <button class="secondary-btn" id="prevBtn" type="button">이전</button>
         <button class="secondary-btn" id="nextBtn" type="button">다음</button>
+        <button class="secondary-btn teacher-only" id="teacherExamDashboardBtn" type="button">대시보드로</button>
         <button class="primary-btn" id="submitBtn" type="button">채점하기</button>
       </div>
 
@@ -110,7 +114,6 @@
         </div>
         <div class="dashboard-actions">
           <button class="secondary-btn teacher-only" id="teacherPracticeBtn" type="button">문제풀기</button>
-          <button class="secondary-btn teacher-only" id="teacherPersonalDashboardBtn" type="button">개인 분석</button>
           <button class="secondary-btn teacher-only" id="teacherStudentDashboardBtn" type="button">학생 현황</button>
           <button class="secondary-btn" id="backFromDashboardBtn" type="button">돌아가기</button>
         </div>

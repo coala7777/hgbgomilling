@@ -334,6 +334,7 @@ input {
 
 .exam-actions,
 .result-actions,
+.select-actions,
 .dashboard-actions,
 .dashboard-head,
 .select-head {
@@ -463,10 +464,23 @@ input {
   justify-content: flex-end;
 }
 
+.select-actions,
+.dashboard-actions {
+  min-width: 0;
+}
+
+.select-actions button,
+.dashboard-actions button {
+  min-width: 110px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
 .teacher-only {
   display: none;
 }
 
+.teacher-session .teacher-only,
 .teacher-mode .teacher-only {
   display: inline-flex;
 }

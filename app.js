@@ -571,8 +571,8 @@ function renderResult(result) {
 async function renderDashboard() {
   state.dataStatus = "";
   $("#dashboardScreen").classList.toggle("teacher-mode", state.user?.role === "teacher");
-  $("#teacherPersonalDashboardBtn").hidden = isTeacherPersonalMode();
   $("#teacherStudentDashboardBtn").hidden = !isTeacherPersonalMode();
+  $("#backFromDashboardBtn").textContent = state.user?.role === "teacher" ? "로그아웃" : "돌아가기";
   const todayStart = startOfTodayIso();
   const todayAllAttempts = await loadAttempts({ since: todayStart, limit: 300 });
   const recentAllAttempts = await loadAttempts({ limit: 500 });
@@ -873,6 +873,7 @@ async function login(id, password) {
     return;
   }
   state.user = { ...user, id };
+  document.body.classList.toggle("teacher-session", user.role === "teacher");
   $("#loginMessage").textContent = "";
   await withLoading("데이터 연결 중", async () => {
     await recordAccess(state.user);
@@ -892,6 +893,7 @@ function logout() {
   state.currentExamId = null;
   state.lastResult = null;
   state.dashboardMode = "students";
+  document.body.classList.remove("teacher-session");
   $("#loginId").value = "";
   $("#loginPw").value = "";
   showScreen("login");
@@ -987,16 +989,26 @@ $("#teacherPracticeBtn").addEventListener("click", async () => {
     showScreen("examSelect");
   });
 });
-$("#teacherPersonalDashboardBtn").addEventListener("click", async () => {
-  state.dashboardMode = "personal";
-  await withLoading("개인 분석 불러오는 중", async () => {
-    await renderDashboard();
-  });
-});
 $("#teacherStudentDashboardBtn").addEventListener("click", async () => {
   state.dashboardMode = "students";
   await withLoading("학생 현황 불러오는 중", async () => {
     await renderDashboard();
+  });
+});
+$("#examSelectDashboardBtn").addEventListener("click", async () => {
+  state.dashboardMode = "students";
+  await withLoading("대시보드 불러오는 중", async () => {
+    await renderDashboard();
+    showScreen("dashboard");
+  });
+});
+$("#teacherExamDashboardBtn").addEventListener("click", async () => {
+  const hasSelection = state.selections.some(Boolean);
+  if (hasSelection && !confirm("현재 풀이를 저장하지 않고 대시보드로 돌아갈까요?")) return;
+  state.dashboardMode = "students";
+  await withLoading("대시보드 불러오는 중", async () => {
+    await renderDashboard();
+    showScreen("dashboard");
   });
 });
 $("#backFromDashboardBtn").addEventListener("click", async () => {
