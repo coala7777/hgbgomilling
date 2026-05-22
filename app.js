@@ -846,10 +846,7 @@ function buildStudentMetrics(todayAttempts, attempts, scoreAttempts) {
 
   return [...metrics.values()]
     .filter((row) => row.todayMinutes || row.realAttemptCount || row.totalMinutes)
-    .sort((a, b) => {
-      if (b.totalMinutes !== a.totalMinutes) return b.totalMinutes - a.totalMinutes;
-      return a.id.localeCompare(b.id);
-    });
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function renderLearningRows(todayAttempts, attempts, scoreAttempts) {
