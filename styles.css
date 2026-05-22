@@ -713,6 +713,30 @@ input {
   font-weight: 800;
 }
 
+.score-students {
+  grid-column: 2 / 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.score-students em,
+.score-students small {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: #eef3f5;
+  color: var(--ink);
+  font-size: 13px;
+  font-style: normal;
+}
+
+.score-students small {
+  color: var(--muted);
+}
+
 .score-bar {
   height: 12px;
   overflow: hidden;

@@ -749,7 +749,7 @@ async function renderDashboard() {
     renderLearningRows(todayAttempts, recentAttempts, recentRealAttempts);
   }
   hideStudentDetail();
-  renderScoreDistribution(recentRealAttempts);
+  renderScoreDistribution(todayRealAttempts);
   renderStudyInsights(todayRealAttempts, recentRealAttempts, recentAccessLog);
   renderMissDashboard(recentRealAttempts);
 }
@@ -987,22 +987,30 @@ function renderScoreDistribution(attempts) {
   const box = $("#scoreDistribution");
   if (!box) return;
   const bins = [
-    { label: "0-39점", min: 0, max: 39, count: 0 },
-    { label: "40-59점", min: 40, max: 59, count: 0 },
-    { label: "60-79점", min: 60, max: 79, count: 0 },
-    { label: "80-100점", min: 80, max: 100, count: 0 },
+    { label: "0-39점", min: 0, max: 39, students: [] },
+    { label: "40-59점", min: 40, max: 59, students: [] },
+    { label: "60-79점", min: 60, max: 79, students: [] },
+    { label: "80-100점", min: 80, max: 100, students: [] },
   ];
   attempts.forEach((attempt) => {
     const score = Number(attempt.score) || 0;
     const bin = bins.find((item) => score >= item.min && score <= item.max);
-    if (bin) bin.count += 1;
+    if (bin) bin.students.push({ id: studentLabel(attempt.studentId), score });
   });
-  const maxCount = Math.max(...bins.map((bin) => bin.count), 1);
+  const maxCount = Math.max(...bins.map((bin) => bin.students.length), 1);
   box.innerHTML = bins.map((bin) => `
     <div class="score-bin">
       <span>${bin.label}</span>
-      <div class="score-bar"><i style="width: ${(bin.count / maxCount) * 100}%"></i></div>
-      <strong>${bin.count}회</strong>
+      <div class="score-bar"><i style="width: ${(bin.students.length / maxCount) * 100}%"></i></div>
+      <strong>${bin.students.length}명</strong>
+      <div class="score-students">
+        ${bin.students.length
+          ? bin.students
+            .sort((a, b) => a.id.localeCompare(b.id))
+            .map((student) => `<em>${student.id} (${student.score})</em>`)
+            .join("")
+          : "<small>해당 없음</small>"}
+      </div>
     </div>
   `).join("");
 }
