@@ -158,15 +158,39 @@
             <thead>
               <tr>
                 <th>학생 ID</th>
-                <th>접속수</th>
                 <th>실전 응시</th>
-                <th>학습시간</th>
+                <th>오늘 접속시간</th>
+                <th>누적 접속시간</th>
                 <th>실전 평균 / 최고</th>
-                <th>최근 접속</th>
+                <th>개별 기록</th>
               </tr>
             </thead>
             <tbody id="studentRows"></tbody>
           </table>
+        </div>
+      </section>
+
+      <section class="student-detail-section" id="studentDetailSection" hidden>
+        <div class="student-detail-head">
+          <div>
+            <p class="section-label">학생 개별 분석</p>
+            <h3 id="studentDetailTitle">학생 ID</h3>
+          </div>
+          <button class="secondary-btn" id="closeStudentDetailBtn" type="button">닫기</button>
+        </div>
+        <div class="detail-grid">
+          <article>
+            <h4>회차별 풀이 기록</h4>
+            <div class="detail-list" id="studentExamSummary"></div>
+          </article>
+          <article>
+            <h4>점수 변화</h4>
+            <div class="score-trend" id="studentScoreTrend"></div>
+          </article>
+          <article>
+            <h4>누적 오답</h4>
+            <div class="detail-list" id="studentWrongSummary"></div>
+          </article>
         </div>
       </section>
 

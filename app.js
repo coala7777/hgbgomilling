@@ -164,6 +164,7 @@ const state = {
   lastResult: null,
   dashboardReturn: "examSelect",
   dashboardMode: "students",
+  dashboardDetail: null,
   dataStatus: "",
 };
 
@@ -724,6 +725,13 @@ async function renderDashboard() {
   const todayVisitorCount = new Set(todayAccessLog.map((log) => log.userId)).size;
   const totalVisitorCount = new Set(recentAccessLog.map((log) => log.userId)).size;
 
+  state.dashboardDetail = {
+    todayAttempts,
+    recentAttempts,
+    recentRealAttempts,
+    recentAccessLog,
+  };
+
   $("#totalAttempts").textContent = String(dashboardAttempts.length);
   $("#averageScore").textContent = scores.length ? String(Math.round(scores.reduce((a, b) => a + b, 0) / scores.length)) : "0";
   $("#bestScore").textContent = scores.length ? String(Math.max(...scores)) : "0";
@@ -738,8 +746,9 @@ async function renderDashboard() {
   if (isTeacherPersonalMode()) {
     renderPersonalAnalysisRows(recentAttempts, recentRealAttempts);
   } else {
-    renderLearningRows(recentAttempts, recentRealAttempts, recentAccessLog);
+    renderLearningRows(todayAttempts, recentAttempts, recentRealAttempts);
   }
+  hideStudentDetail();
   renderScoreDistribution(recentRealAttempts);
   renderStudyInsights(todayRealAttempts, recentRealAttempts, recentAccessLog);
   renderMissDashboard(recentRealAttempts);
@@ -791,33 +800,27 @@ function renderStudentSummaryRows(attempts) {
   if (!byStudentExam.size) rows.innerHTML = '<tr><td colspan="5">아직 기록이 없습니다.</td></tr>';
 }
 
-function buildStudentMetrics(attempts, scoreAttempts, accessLog) {
+function buildStudentMetrics(todayAttempts, attempts, scoreAttempts) {
   const metrics = new Map();
   Object.entries(USERS)
     .filter(([, user]) => user.role === "student")
     .forEach(([id]) => {
       metrics.set(id, {
         id,
-        accessCount: 0,
         realAttemptCount: 0,
+        todayMinutes: 0,
         totalMinutes: 0,
         averageScore: 0,
         bestScore: 0,
-        lastAccess: null,
         scores: [],
       });
     });
 
-  accessLog
-    .filter((log) => log.role === "student")
-    .forEach((log) => {
-      const id = String(log.userId);
-      if (!metrics.has(id)) return;
-      const row = metrics.get(id);
-      const at = new Date(log.at);
-      row.accessCount += 1;
-      if (!row.lastAccess || at > row.lastAccess) row.lastAccess = at;
-    });
+  todayAttempts.forEach((attempt) => {
+    const id = String(attempt.studentId);
+    if (!metrics.has(id)) return;
+    metrics.get(id).todayMinutes += attemptMinutes(attempt);
+  });
 
   attempts.forEach((attempt) => {
     const id = String(attempt.studentId);
@@ -842,30 +845,33 @@ function buildStudentMetrics(attempts, scoreAttempts, accessLog) {
   });
 
   return [...metrics.values()]
-    .filter((row) => row.accessCount || row.realAttemptCount || row.totalMinutes)
+    .filter((row) => row.todayMinutes || row.realAttemptCount || row.totalMinutes)
     .sort((a, b) => {
       if (b.totalMinutes !== a.totalMinutes) return b.totalMinutes - a.totalMinutes;
       return a.id.localeCompare(b.id);
     });
 }
 
-function renderLearningRows(attempts, scoreAttempts, accessLog) {
+function renderLearningRows(todayAttempts, attempts, scoreAttempts) {
   const rows = $("#studentRows");
   rows.innerHTML = "";
-  const metrics = buildStudentMetrics(attempts, scoreAttempts, accessLog);
+  const metrics = buildStudentMetrics(todayAttempts, attempts, scoreAttempts);
   metrics.forEach((row) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${studentLabel(row.id)}</td>
-      <td>${row.accessCount}</td>
       <td>${row.realAttemptCount}</td>
+      <td>${formatMinutes(row.todayMinutes)}</td>
       <td>${formatMinutes(row.totalMinutes)}</td>
       <td>${row.averageScore} / ${row.bestScore}</td>
-      <td>${row.lastAccess ? row.lastAccess.toLocaleString() : "-"}</td>
+      <td><button class="small-btn detail-btn" type="button" data-student-id="${row.id}">상세</button></td>
     `;
     rows.appendChild(tr);
   });
   if (!metrics.length) rows.innerHTML = '<tr><td colspan="6">아직 학습 기록이 없습니다.</td></tr>';
+  rows.querySelectorAll(".detail-btn").forEach((button) => {
+    button.addEventListener("click", () => renderStudentDetail(button.dataset.studentId));
+  });
 }
 
 function renderPersonalAnalysisRows(attempts, scoreAttempts) {
@@ -887,6 +893,97 @@ function renderPersonalAnalysisRows(attempts, scoreAttempts) {
       rows.appendChild(tr);
     });
   if (!attempts.length) rows.innerHTML = '<tr><td colspan="6">아직 개인 풀이 기록이 없습니다.</td></tr>';
+}
+
+function hideStudentDetail() {
+  const section = $("#studentDetailSection");
+  if (section) section.hidden = true;
+}
+
+function renderStudentDetail(studentId) {
+  const detail = state.dashboardDetail;
+  if (!detail) return;
+  const attempts = detail.recentAttempts
+    .filter((attempt) => String(attempt.studentId) === String(studentId))
+    .sort((a, b) => new Date(a.submittedAt) - new Date(b.submittedAt));
+  const realAttempts = attempts.filter((attempt) => attempt.mode === "real");
+
+  $("#studentDetailTitle").textContent = `${studentId} 학습 기록`;
+  renderStudentExamSummary(realAttempts);
+  renderStudentScoreTrend(realAttempts);
+  renderStudentWrongSummary(realAttempts);
+  $("#studentDetailSection").hidden = false;
+  $("#studentDetailSection").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderStudentExamSummary(attempts) {
+  const box = $("#studentExamSummary");
+  const byExam = new Map();
+  Object.entries(EXAMS).forEach(([examId, exam]) => {
+    byExam.set(examId, { exam, attempts: [] });
+  });
+  attempts.forEach((attempt) => {
+    if (byExam.has(attempt.examId)) byExam.get(attempt.examId).attempts.push(attempt);
+  });
+  box.innerHTML = [...byExam.values()].map(({ exam, attempts: examAttempts }) => {
+    const scores = examAttempts.map((attempt) => Number(attempt.score) || 0);
+    const latest = examAttempts[examAttempts.length - 1];
+    const best = scores.length ? Math.max(...scores) : "-";
+    const average = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : "-";
+    return `
+      <div class="detail-row">
+        <strong>${exam.title}</strong>
+        <span>${examAttempts.length}회 풀이 · 평균 ${average}점 · 최고 ${best}점${latest ? ` · 최근 ${latest.score}점` : ""}</span>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderStudentScoreTrend(attempts) {
+  const box = $("#studentScoreTrend");
+  if (!attempts.length) {
+    box.innerHTML = "<p>아직 실전 점수 기록이 없습니다.</p>";
+    return;
+  }
+  const points = attempts.map((attempt, index) => ({
+    label: `${attempt.examTitle} ${index + 1}`,
+    score: Number(attempt.score) || 0,
+    at: new Date(attempt.submittedAt).toLocaleDateString(),
+  }));
+  box.innerHTML = points.map((point) => `
+    <div class="trend-row">
+      <span>${point.at}</span>
+      <div class="trend-bar"><i style="width: ${point.score}%"></i></div>
+      <strong>${point.score}점</strong>
+    </div>
+  `).join("");
+}
+
+function renderStudentWrongSummary(attempts) {
+  const box = $("#studentWrongSummary");
+  const wrongs = new Map();
+  attempts.forEach((attempt) => {
+    attempt.items.forEach((item) => {
+      if (item.correct) return;
+      const key = `${attempt.examId}__${item.qno}`;
+      const row = wrongs.get(key) || { examId: attempt.examId, examTitle: attempt.examTitle, qno: item.qno, count: 0 };
+      row.count += 1;
+      wrongs.set(key, row);
+    });
+  });
+  const rows = [...wrongs.values()]
+    .sort((a, b) => b.count - a.count || a.examTitle.localeCompare(b.examTitle) || a.qno - b.qno)
+    .slice(0, 12);
+  if (!rows.length) {
+    box.innerHTML = "<p>누적 오답 기록이 없습니다.</p>";
+    return;
+  }
+  box.innerHTML = rows.map((row) => `
+    <div class="detail-row">
+      <strong>${row.examTitle} ${row.qno}번</strong>
+      <span>${row.count}회 오답</span>
+    </div>
+  `).join("");
 }
 
 function renderScoreDistribution(attempts) {
@@ -916,8 +1013,8 @@ function renderScoreDistribution(attempts) {
 function renderStudyInsights(todayAttempts, recentAttempts, accessLog) {
   const box = $("#studyInsights");
   if (!box) return;
-  const metrics = buildStudentMetrics(recentAttempts, recentAttempts, accessLog);
-  const accessedNoAttempt = metrics.filter((row) => row.accessCount && !row.realAttemptCount).length;
+  const metrics = buildStudentMetrics(todayAttempts, recentAttempts, recentAttempts);
+  const studiedNoRealAttempt = metrics.filter((row) => row.totalMinutes && !row.realAttemptCount).length;
   const scores = recentAttempts.map((attempt) => Number(attempt.score) || 0);
   const average = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
   const lowScoreCount = scores.filter((score) => score < 60).length;
@@ -932,8 +1029,8 @@ function renderStudyInsights(todayAttempts, recentAttempts, accessLog) {
   if (topMiss) {
     insights.push(`가장 많이 틀린 문항은 ${EXAMS[topMiss.examId].title} ${topMiss.qno}번입니다. 수업 시작 전에 이 문항을 짧게 풀이하면 효율이 좋습니다.`);
   }
-  if (accessedNoAttempt) {
-    insights.push(`접속은 했지만 제출 기록이 없는 학생 ID가 ${accessedNoAttempt}명 있습니다. 기기 문제인지, 문제 풀이 중 이탈인지 확인해보면 좋습니다.`);
+  if (studiedNoRealAttempt) {
+    insights.push(`학습시간은 있으나 실전 제출 기록이 없는 학생 ID가 ${studiedNoRealAttempt}명 있습니다. 연습만 반복 중인지, 실전 응시 전 도움이 필요한지 확인해보면 좋습니다.`);
   }
   if (todayAttempts.length) {
     insights.push(`오늘 실전 제출 기록은 ${todayAttempts.length}회입니다. 같은 회차 반복 응시자는 점수 변화 폭을 기준으로 개별 피드백을 주기 좋습니다.`);
@@ -1169,6 +1266,7 @@ $("#teacherExamDashboardBtn").addEventListener("click", async () => {
     showScreen("dashboard");
   });
 });
+$("#closeStudentDetailBtn").addEventListener("click", hideStudentDetail);
 $("#backFromDashboardBtn").addEventListener("click", async () => {
   if (state.user?.role === "teacher" || state.dashboardReturn === "login") {
     logout();
