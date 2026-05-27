@@ -1,6 +1,8 @@
 const QUESTION_COUNT = 60;
 const ATTEMPTS_KEY = "hankibu_cbt_attempts_v3";
 const ACCESS_KEY = "hankibu_cbt_access_v1";
+const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
+const ACCESS_HEARTBEAT_MS = 2 * 60 * 1000;
 
 const EXAMS = {
   "2014_1": {
@@ -166,6 +168,7 @@ const state = {
   dashboardMode: "students",
   dashboardDetail: null,
   dataStatus: "",
+  accessHeartbeatId: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -541,6 +544,34 @@ async function recordAccess(user) {
   if (error) console.warn("Supabase access save failed", error);
 }
 
+function activeStudentIdsFromLogs(logs) {
+  const cutoff = Date.now() - ACTIVE_WINDOW_MS;
+  return new Set(logs
+    .filter((log) => log.role === "student" && new Date(log.at).getTime() >= cutoff)
+    .map((log) => String(log.userId)));
+}
+
+function studentStatusLabel(id, isActive) {
+  const label = studentLabel(id);
+  if (!isActive) return label;
+  return `<span class="student-online" title="현재 접속 중" aria-label="${label} 현재 접속 중"><i></i>${label}</span>`;
+}
+
+function stopAccessHeartbeat() {
+  if (!state.accessHeartbeatId) return;
+  clearInterval(state.accessHeartbeatId);
+  state.accessHeartbeatId = null;
+}
+
+function startAccessHeartbeat() {
+  stopAccessHeartbeat();
+  if (!state.user) return;
+  state.accessHeartbeatId = setInterval(() => {
+    if (!state.user || document.visibilityState === "hidden") return;
+    recordAccess(state.user);
+  }, ACCESS_HEARTBEAT_MS);
+}
+
 async function renderExamSelect() {
   $("#welcomeText").textContent = `${state.user.name}님, 응시할 문제를 선택하세요`;
   const list = $("#examList");
@@ -722,6 +753,7 @@ async function renderDashboard() {
 
   const todayAccessLog = filterAccessForDashboard(await loadAccessLog({ since: todayStart, limit: 1000 }));
   const recentAccessLog = filterAccessForDashboard(await loadAccessLog({ limit: 5000 }));
+  const activeStudentIds = activeStudentIdsFromLogs(recentAccessLog);
   const todayVisitorCount = new Set(todayAccessLog.map((log) => log.userId)).size;
   const totalVisitorCount = new Set(recentAccessLog.map((log) => log.userId)).size;
 
@@ -730,6 +762,7 @@ async function renderDashboard() {
     recentAttempts,
     recentRealAttempts,
     recentAccessLog,
+    activeStudentIds,
   };
 
   $("#totalAttempts").textContent = String(dashboardAttempts.length);
@@ -746,7 +779,7 @@ async function renderDashboard() {
   if (isTeacherPersonalMode()) {
     renderPersonalAnalysisRows(recentAttempts, recentRealAttempts);
   } else {
-    renderLearningRows(todayAttempts, recentAttempts, recentRealAttempts);
+    renderLearningRows(todayAttempts, recentAttempts, recentRealAttempts, activeStudentIds);
   }
   hideStudentDetail();
   renderScoreDistribution(todayRealAttempts);
@@ -800,7 +833,7 @@ function renderStudentSummaryRows(attempts) {
   if (!byStudentExam.size) rows.innerHTML = '<tr><td colspan="5">아직 기록이 없습니다.</td></tr>';
 }
 
-function buildStudentMetrics(todayAttempts, attempts, scoreAttempts) {
+function buildStudentMetrics(todayAttempts, attempts, scoreAttempts, activeStudentIds = new Set()) {
   const metrics = new Map();
   Object.entries(USERS)
     .filter(([, user]) => user.role === "student")
@@ -845,18 +878,18 @@ function buildStudentMetrics(todayAttempts, attempts, scoreAttempts) {
   });
 
   return [...metrics.values()]
-    .filter((row) => row.todayMinutes || row.realAttemptCount || row.totalMinutes)
+    .filter((row) => row.todayMinutes || row.realAttemptCount || row.totalMinutes || activeStudentIds.has(String(row.id)))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
-function renderLearningRows(todayAttempts, attempts, scoreAttempts) {
+function renderLearningRows(todayAttempts, attempts, scoreAttempts, activeStudentIds = new Set()) {
   const rows = $("#studentRows");
   rows.innerHTML = "";
-  const metrics = buildStudentMetrics(todayAttempts, attempts, scoreAttempts);
+  const metrics = buildStudentMetrics(todayAttempts, attempts, scoreAttempts, activeStudentIds);
   metrics.forEach((row) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${studentLabel(row.id)}</td>
+      <td>${studentStatusLabel(row.id, activeStudentIds.has(String(row.id)))}</td>
       <td>${row.realAttemptCount}</td>
       <td>${formatMinutes(row.todayMinutes)}</td>
       <td>${formatMinutes(row.totalMinutes)}</td>
@@ -1127,6 +1160,7 @@ async function login(id, password) {
   await withLoading("데이터 연결 중", async () => {
     await loadQuestionTexts();
     await recordAccess(state.user);
+    startAccessHeartbeat();
     if (user.role === "teacher") {
       state.dashboardReturn = "login";
       await renderDashboard();
@@ -1139,6 +1173,7 @@ async function login(id, password) {
 }
 
 function logout() {
+  stopAccessHeartbeat();
   state.user = null;
   state.currentExamId = null;
   state.currentMode = "real";
@@ -1283,6 +1318,10 @@ $("#backFromDashboardBtn").addEventListener("click", async () => {
       showScreen("examSelect");
     });
   }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.user) recordAccess(state.user);
 });
 
 setupCalculator();
