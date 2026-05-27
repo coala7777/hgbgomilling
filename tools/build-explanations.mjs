@@ -106,7 +106,7 @@ function findSource(questionText, answerText) {
 }
 
 function sourceLabel(source) {
-  return source ? `기계 일반_(웅보) ${source.page}쪽의 관련 설명을 기준으로 보면` : "교재 OCR에서 직접 대응 문단은 찾지 못했지만 기계 일반 표준 이론으로 보면";
+  return source ? `교재 ${source.page}쪽의 관련 설명을 기준으로 보면` : "교재 OCR에서 직접 대응 문단은 찾지 못했지만 기계 일반 표준 이론으로 보면";
 }
 
 function principle(topic) {
@@ -144,16 +144,17 @@ function explanationFor(row) {
     ? `정답 보기는 "${answerText}"의 조건이 문제에서 묻는 개념과 가장 잘 맞습니다.`
     : `정답은 ${answer}번 보기이며, 보기의 조건이 문제에서 묻는 개념과 맞습니다.`;
 
+  let body = `${lead} ${core} ${answerGuide} 비슷한 용어가 함께 나오면 기능, 목적, 적용 조건을 먼저 구분하면 보기 판단이 쉬워집니다.`;
   if (type === "negative") {
-    return `${lead} ${core} 이 문제는 틀린 설명을 찾는 형식이므로 각 보기가 말하는 결과가 실제 원리와 어긋나는지 비교해야 합니다. ${answerGuide} 나머지 보기는 용어와 기능의 방향이 맞지만, 정답 보기는 핵심 조건이 어긋난다는 점이 판별 기준입니다.`;
+    body = `${lead} ${core} 이 문제는 틀린 설명을 찾는 형식이므로 각 보기가 말하는 결과가 실제 원리와 어긋나는지 비교해야 합니다. ${answerGuide} 나머지 보기는 용어와 기능의 방향이 맞지만, 정답 보기는 핵심 조건이 어긋난다는 점이 판별 기준입니다.`;
   }
   if (type === "calculation") {
-    return `${lead} ${core} 계산형 문항은 먼저 구해야 할 값을 정하고 단위를 통일한 뒤 공식에 대입해야 합니다. ${answerGuide} 특히 mm, m/min, rpm, 분당 이송처럼 단위가 섞이면 오답이 되기 쉬우므로 식에 넣기 전 단위를 먼저 맞추는 것이 중요합니다.`;
+    body = `${lead} ${core} 계산형 문항은 먼저 구해야 할 값을 정하고 단위를 통일한 뒤 공식에 대입해야 합니다. ${answerGuide} 특히 mm, m/min, rpm, 분당 이송처럼 단위가 섞이면 오답이 되기 쉬우므로 식에 넣기 전 단위를 먼저 맞추는 것이 중요합니다.`;
   }
   if (type === "positive") {
-    return `${lead} ${core} 조건에 맞는 설명을 고를 때는 용어, 목적, 사용 조건이 모두 맞아야 합니다. ${answerGuide} 일부 조건만 맞거나 다른 재료, 공구, 코드, 측정 대상에 해당하는 보기는 제외하면 됩니다.`;
+    body = `${lead} ${core} 조건에 맞는 설명을 고를 때는 용어, 목적, 사용 조건이 모두 맞아야 합니다. ${answerGuide} 일부 조건만 맞거나 다른 재료, 공구, 코드, 측정 대상에 해당하는 보기는 제외하면 됩니다.`;
   }
-  return `${lead} ${core} ${answerGuide} 비슷한 용어가 함께 나오면 기능, 목적, 적용 조건을 먼저 구분하면 보기 판단이 쉬워집니다.`;
+  return `${body} 정답: ${answer}번`;
 }
 
 const explanations = {};
