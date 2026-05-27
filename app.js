@@ -3,6 +3,18 @@ const ATTEMPTS_KEY = "hankibu_cbt_attempts_v3";
 const ACCESS_KEY = "hankibu_cbt_access_v1";
 
 const EXAMS = {
+  "2014_1": {
+    title: "2014년 1회차",
+    folder: "2014_1",
+    answers: [
+      1, 4, 1, 4, 2, 3, 3, 2, 4, 2,
+      2, 1, 1, 1, 2, 4, 2, 1, 3, 4,
+      2, 2, 3, 1, 2, 1, 4, 3, 1, 3,
+      1, 3, 4, 3, 4, 2, 2, 4, 1, 2,
+      3, 2, 1, 1, 4, 2, 1, 1, 3, 3,
+      2, 2, 1, 1, 3, 4, 4, 3, 1, 4,
+    ],
+  },
   "2014_2": {
     title: "2014년 2회차",
     folder: "2014_2",
