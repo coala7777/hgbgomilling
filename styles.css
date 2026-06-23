@@ -420,14 +420,36 @@ input {
   font-weight: 700;
 }
 
+.exam-card .exam-access {
+  margin-top: -8px;
+  font-size: 14px;
+}
+
+.exam-card .exam-access.available {
+  color: var(--brand);
+}
+
+.exam-card .exam-access.unavailable {
+  color: var(--danger);
+}
+
 .exam-card button {
   width: 100%;
+}
+
+.exam-card button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .exam-card-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.exam-card.real-only .exam-card-actions {
+  grid-template-columns: 1fr;
 }
 
 .exam-actions button {

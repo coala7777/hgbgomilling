@@ -140,6 +140,11 @@ const EXAMS = {
     title: "2026 1학기 수행평가",
     folder: "2026_1",
     choiceCount: 5,
+    realOnly: true,
+    accessDates: {
+      "11": "2026-06-24",
+      "12": "2026-06-23",
+    },
     answers: [
       1, 2, 3, 2, 3, 3, 3, 1, 4, 2,
       5, 5, 1, 1, 1, 5, 1, 2, 3, 1,
@@ -266,6 +271,23 @@ function currentExam() {
 
 function questionCount(examId = state.currentExamId) {
   return EXAMS[examId]?.answers?.length || 0;
+}
+
+function examAccess(examId, user = state.user, date = new Date()) {
+  const exam = EXAMS[examId];
+  if (!exam?.accessDates || user?.role === "teacher") {
+    return { allowed: true, message: user?.role === "teacher" && exam?.accessDates ? "교사용 확인 가능" : "" };
+  }
+
+  const classPrefix = String(user?.id || "").slice(0, 2);
+  const accessDate = exam.accessDates[classPrefix];
+  if (!accessDate) return { allowed: false, message: "이 수행평가의 응시 대상이 아닙니다." };
+
+  const currentDate = todayKey(date);
+  const displayDate = accessDate.replaceAll("-", ".");
+  if (currentDate === accessDate) return { allowed: true, message: `응시일 ${displayDate}` };
+  if (currentDate < accessDate) return { allowed: false, message: `${displayDate}에 응시할 수 있습니다.` };
+  return { allowed: false, message: `${displayDate} 응시 기간이 종료되었습니다.` };
 }
 
 function attemptQuestionCount(attempt) {
@@ -608,14 +630,22 @@ async function renderExamSelect() {
       && attempt.mode === "real"
     ));
     const latest = attempts[0];
+    const access = examAccess(examId);
+    const buttons = exam.realOnly
+      ? `<button class="primary-btn" type="button" data-mode="real" ${access.allowed ? "" : "disabled"}>실전용</button>`
+      : `
+        <button class="secondary-btn" type="button" data-mode="practice">연습용</button>
+        <button class="primary-btn" type="button" data-mode="real">실전용</button>
+      `;
     const card = document.createElement("article");
     card.className = "exam-card";
+    if (exam.realOnly) card.classList.add("real-only");
     card.innerHTML = `
       <h3>${exam.title}</h3>
       <p>${exam.answers.length}문항${latest ? ` · 최근 실전 ${latest.score}점` : " · 실전 미응시"}</p>
+      ${access.message ? `<p class="exam-access ${access.allowed ? "available" : "unavailable"}">${access.message}</p>` : ""}
       <div class="exam-card-actions">
-        <button class="secondary-btn" type="button" data-mode="practice">연습용</button>
-        <button class="primary-btn" type="button" data-mode="real">실전용</button>
+        ${buttons}
       </div>
     `;
     card.querySelectorAll("button").forEach((button) => {
@@ -680,6 +710,13 @@ function renderQuestion() {
 }
 
 function startExam(examId, mode = state.currentMode || "real") {
+  const exam = EXAMS[examId];
+  const access = examAccess(examId);
+  if (exam.realOnly && mode !== "real") mode = "real";
+  if (!access.allowed) {
+    alert(access.message);
+    return;
+  }
   state.currentExamId = examId;
   state.currentMode = mode;
   state.current = 1;
@@ -807,10 +844,34 @@ async function renderDashboard() {
   } else {
     renderLearningRows(todayAttempts, recentAttempts, recentRealAttempts, activeStudentIds);
   }
+  renderAssessmentResults(recentRealAttempts);
   hideStudentDetail();
   renderScoreDistribution(todayRealAttempts);
   renderStudyInsights(todayRealAttempts, recentRealAttempts, recentAccessLog);
   renderMissDashboard(recentRealAttempts);
+}
+
+function renderAssessmentResults(attempts) {
+  const section = $("#assessmentResultsSection");
+  const rows = $("#assessmentResultRows");
+  const visible = state.user?.role === "teacher" && !isTeacherPersonalMode();
+  section.hidden = !visible;
+  if (!visible) return;
+
+  const results = attempts
+    .filter((attempt) => attempt.examId === "2026_1" && isStudentId(attempt.studentId))
+    .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
+  rows.innerHTML = results.map((attempt) => `
+    <tr>
+      <td>${studentLabel(attempt.studentId)}</td>
+      <td>${new Date(attempt.submittedAt).toLocaleString()} · ${formatMinutes(attemptMinutes(attempt))}</td>
+      <td><strong>${attempt.score}점</strong></td>
+    </tr>
+  `).join("");
+  if (!results.length) {
+    rows.innerHTML = '<tr><td colspan="3">아직 수행평가 응시 기록이 없습니다.</td></tr>';
+  }
 }
 
 function renderTodayScoreRows(attempts) {
