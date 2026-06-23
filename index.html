@@ -63,18 +63,19 @@
         <div class="progress-wrap" aria-label="진행률">
           <div class="progress-bar" id="progressBar"></div>
         </div>
-        <span id="answeredCount">0 / 60</span>
+        <span id="answeredCount">0 / 0</span>
       </div>
 
       <article class="question-stage">
         <img id="questionImage" alt="문제 이미지">
       </article>
 
-      <nav class="choice-panel" aria-label="정답 선택">
+      <nav class="choice-panel" id="choicePanel" aria-label="정답 선택">
         <button class="choice-btn" type="button" data-choice="1">①</button>
         <button class="choice-btn" type="button" data-choice="2">②</button>
         <button class="choice-btn" type="button" data-choice="3">③</button>
         <button class="choice-btn" type="button" data-choice="4">④</button>
+        <button class="choice-btn" type="button" data-choice="5" hidden>⑤</button>
       </nav>
 
       <aside class="explanation-panel" id="explanationPanel" aria-live="polite" hidden>

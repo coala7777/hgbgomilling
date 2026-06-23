@@ -310,7 +310,7 @@ input {
 
 .choice-panel {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(var(--choice-count, 4), 1fr);
   gap: 10px;
   margin: 16px 0;
   position: sticky;
@@ -625,6 +625,10 @@ input {
   display: grid;
   gap: 12px;
   padding: 12px;
+}
+
+.choice-btn[hidden] {
+  display: none;
 }
 
 .student-detail-section[hidden] {

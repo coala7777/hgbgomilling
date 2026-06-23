@@ -1,6 +1,6 @@
 import fs from "node:fs";
 
-const questionPath = "data/question-ocr.json";
+const questionPaths = ["data/question-ocr.json", "data/question-2026-1.json"];
 const sourcePath = "data/woongbo-ocr.json";
 const outputPath = "data/explanations.js";
 
@@ -8,7 +8,7 @@ function readJson(path) {
   return JSON.parse(fs.readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
 }
 
-const questions = readJson(questionPath);
+const questions = questionPaths.flatMap(readJson);
 const sourcePages = readJson(sourcePath)
   .map((page) => ({ page: page.page, text: clean(page.text || "") }))
   .filter((page) => page.text.length > 20);
@@ -46,9 +46,9 @@ function normalizeOptionMarkers(text) {
 
 function optionsOf(text) {
   const normalized = normalizeOptionMarkers(text);
-  const symbols = { "①": 1, "②": 2, "③": 3, "④": 4 };
+  const symbols = { "①": 1, "②": 2, "③": 3, "④": 4, "⑤": 5 };
   const options = {};
-  [...normalized.matchAll(/([①②③④])\s*([\s\S]*?)(?=(?:\n?[①②③④]\s*)|$)/g)].forEach((match) => {
+  [...normalized.matchAll(/([①②③④⑤])\s*([\s\S]*?)(?=(?:\n?[①②③④⑤]\s*)|$)/g)].forEach((match) => {
     options[symbols[match[1]]] = clean(match[2]).replace(/\s+/g, " ");
   });
   return options;
@@ -56,7 +56,7 @@ function optionsOf(text) {
 
 function stemOf(text) {
   const normalized = normalizeOptionMarkers(text);
-  const optionStart = normalized.search(/[①②③④]/);
+  const optionStart = normalized.search(/[①②③④⑤]/);
   return clean(optionStart >= 0 ? normalized.slice(0, optionStart) : normalized)
     .replace(/^\d+\s*/, "")
     .replace(/\s+/g, " ");

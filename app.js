@@ -1,4 +1,3 @@
-const QUESTION_COUNT = 60;
 const ATTEMPTS_KEY = "hankibu_cbt_attempts_v3";
 const ACCESS_KEY = "hankibu_cbt_access_v1";
 const ACTIVE_WINDOW_MS = 5 * 60 * 1000;
@@ -137,6 +136,20 @@ const EXAMS = {
       4, 1, 3, 4, 2, 1, 4, 4, 1, 3,
     ],
   },
+  "2026_1": {
+    title: "2026 1학기 수행평가",
+    folder: "2026_1",
+    choiceCount: 5,
+    answers: [
+      1, 2, 3, 2, 3, 3, 3, 1, 4, 2,
+      5, 5, 1, 1, 1, 5, 1, 2, 3, 1,
+      5, 4, 2, 3, 4, 3, 4, 3, 1, 3,
+      1, 4, 2, 4, 2, 4, 1, 5, 2, 1,
+      3, 4, 2, 5, 4, 3, 3, 5, 3, 2,
+      4, 4, 4, 5, 2, 2, 1, 5, 4, 1,
+      1, 2, 3, 2, 4, 2, 2, 3, 2, 2,
+    ],
+  },
 };
 
 const EXPLANATIONS = window.HGBGO_EXPLANATIONS || {};
@@ -160,7 +173,7 @@ const state = {
   currentExamId: null,
   currentMode: "real",
   current: 1,
-  selections: Array(QUESTION_COUNT).fill(null),
+  selections: [],
   practiceFeedback: null,
   startedAt: null,
   lastResult: null,
@@ -251,6 +264,14 @@ function currentExam() {
   return EXAMS[state.currentExamId];
 }
 
+function questionCount(examId = state.currentExamId) {
+  return EXAMS[examId]?.answers?.length || 0;
+}
+
+function attemptQuestionCount(attempt) {
+  return attempt.items?.length || questionCount(attempt.examId) || 60;
+}
+
 function isPracticeMode() {
   return state.currentMode === "practice";
 }
@@ -262,9 +283,11 @@ function modeLabel(mode = state.currentMode) {
 async function loadQuestionTexts() {
   if (Object.keys(QUESTION_TEXTS).length) return;
   try {
-    const response = await fetch("data/question-ocr.json");
-    if (!response.ok) throw new Error(`question OCR load failed: ${response.status}`);
-    const rows = await response.json();
+    const sources = ["data/question-ocr.json", "data/question-2026-1.json"];
+    const responses = await Promise.all(sources.map((path) => fetch(path)));
+    const failed = responses.find((response) => !response.ok);
+    if (failed) throw new Error(`question OCR load failed: ${failed.status}`);
+    const rows = (await Promise.all(responses.map((response) => response.json()))).flat();
     rows.forEach((row) => {
       const match = row.path?.match(/assets\/exams\/([^/]+)\/(\d+)\.png$/);
       if (!match) return;
@@ -286,7 +309,7 @@ function cleanQuestionText(text) {
 
 function questionStem(text) {
   const normalized = cleanQuestionText(text);
-  const optionStart = normalized.search(/[①②③④]/);
+  const optionStart = normalized.search(/[①②③④⑤]/);
   return (optionStart >= 0 ? normalized.slice(0, optionStart) : normalized)
     .replace(/^\d+\s*/, "")
     .replace(/\s+/g, " ")
@@ -298,15 +321,15 @@ function questionOptions(text) {
     .replace(/(^|\n)\s*[lI]\s+/g, "$1① ")
     .replace(/(^|\n)\s*[@⑦]\s+/g, "$1② ")
     .replace(/(^|\n)\s*[.·]\s+/g, "$1④ ");
-  const symbols = { "①": 1, "②": 2, "③": 3, "④": 4 };
+  const symbols = { "①": 1, "②": 2, "③": 3, "④": 4, "⑤": 5 };
   const options = {};
-  [...normalized.matchAll(/([①②③④])\s*([\s\S]*?)(?=(?:\n?[①②③④]\s*)|$)/g)].forEach((match) => {
+  [...normalized.matchAll(/([①②③④⑤])\s*([\s\S]*?)(?=(?:\n?[①②③④⑤]\s*)|$)/g)].forEach((match) => {
     options[symbols[match[1]]] = match[2].replace(/\s+/g, " ").trim();
   });
   if (Object.keys(options).length >= 3) return options;
 
   normalized.split("\n").map((line) => line.trim()).filter(Boolean).forEach((line) => {
-    const match = line.match(/^([1-4])[\).]?\s+(.+)$/);
+    const match = line.match(/^([1-5])[\).]?\s+(.+)$/);
     if (match && !options[Number(match[1])]) options[Number(match[1])] = match[2].trim();
   });
   return options;
@@ -589,7 +612,7 @@ async function renderExamSelect() {
     card.className = "exam-card";
     card.innerHTML = `
       <h3>${exam.title}</h3>
-      <p>${QUESTION_COUNT}문항${latest ? ` · 최근 실전 ${latest.score}점` : " · 실전 미응시"}</p>
+      <p>${exam.answers.length}문항${latest ? ` · 최근 실전 ${latest.score}점` : " · 실전 미응시"}</p>
       <div class="exam-card-actions">
         <button class="secondary-btn" type="button" data-mode="practice">연습용</button>
         <button class="primary-btn" type="button" data-mode="real">실전용</button>
@@ -605,7 +628,7 @@ async function renderExamSelect() {
 function renderQuestionMap() {
   const map = $("#questionMap");
   map.innerHTML = "";
-  for (let qno = 1; qno <= QUESTION_COUNT; qno += 1) {
+  for (let qno = 1; qno <= questionCount(); qno += 1) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "map-btn";
@@ -621,8 +644,9 @@ function renderQuestionMap() {
 
 function updateProgress() {
   const answered = state.selections.filter(Boolean).length;
-  $("#answeredCount").textContent = `${answered} / ${QUESTION_COUNT}`;
-  $("#progressBar").style.width = `${(answered / QUESTION_COUNT) * 100}%`;
+  const total = questionCount();
+  $("#answeredCount").textContent = `${answered} / ${total}`;
+  $("#progressBar").style.width = `${(answered / total) * 100}%`;
   $$(".map-btn").forEach((btn, index) => {
     const qno = index + 1;
     btn.classList.toggle("answered", Boolean(state.selections[index]));
@@ -638,8 +662,10 @@ function renderQuestion() {
   $("#questionImage").src = questionImagePath(qno);
   $("#questionImage").alt = `${exam.title} ${qno}번 문제`;
   $$(".choice-btn").forEach((btn) => {
+    btn.hidden = Number(btn.dataset.choice) > (exam.choiceCount || 4);
     btn.classList.toggle("selected", Number(btn.dataset.choice) === state.selections[qno - 1]);
   });
+  $("#choicePanel").style.setProperty("--choice-count", exam.choiceCount || 4);
   const feedback = state.practiceFeedback?.qno === qno ? state.practiceFeedback : null;
   const explanationPanel = $("#explanationPanel");
   explanationPanel.hidden = !feedback;
@@ -648,7 +674,7 @@ function renderQuestion() {
     $("#explanationText").textContent = feedback.text;
   }
   $("#prevBtn").disabled = qno === 1;
-  $("#nextBtn").disabled = qno === QUESTION_COUNT;
+  $("#nextBtn").disabled = qno === questionCount();
   $("#submitBtn").textContent = isPracticeMode() ? "연습 마치기" : "채점하기";
   updateProgress();
 }
@@ -657,7 +683,7 @@ function startExam(examId, mode = state.currentMode || "real") {
   state.currentExamId = examId;
   state.currentMode = mode;
   state.current = 1;
-  state.selections = Array(QUESTION_COUNT).fill(null);
+  state.selections = Array(questionCount(examId)).fill(null);
   state.practiceFeedback = null;
   state.startedAt = new Date().toISOString();
   renderQuestionMap();
@@ -681,7 +707,7 @@ function scoreExam() {
     startedAt: state.startedAt,
     submittedAt: new Date().toISOString(),
     correctCount,
-    score: Math.round((correctCount / QUESTION_COUNT) * 100),
+    score: Math.round((correctCount / questionCount()) * 100),
     items,
   };
 }
@@ -799,7 +825,7 @@ function renderTodayScoreRows(attempts) {
         <td>${attempt.examTitle}</td>
         <td>${studentLabel(attempt.studentId)}</td>
         <td>${attempt.score}</td>
-        <td>${attempt.correctCount}/${QUESTION_COUNT}</td>
+        <td>${attempt.correctCount}/${attemptQuestionCount(attempt)}</td>
         <td>${new Date(attempt.submittedAt).toLocaleTimeString()}</td>
       `;
       rows.appendChild(tr);
@@ -825,7 +851,7 @@ function renderStudentSummaryRows(attempts) {
       <td>${latest.examTitle}</td>
       <td>${studentLabel(latest.studentId)}</td>
       <td>${latest.score}</td>
-      <td>${latest.correctCount}/${QUESTION_COUNT}</td>
+      <td>${latest.correctCount}/${attemptQuestionCount(latest)}</td>
       <td>${new Date(latest.submittedAt).toLocaleString()}</td>
     `;
     rows.appendChild(tr);
@@ -1080,7 +1106,7 @@ function renderStudyInsights(todayAttempts, recentAttempts, accessLog) {
 function getTopMisses(attempts, limit = 10) {
   const misses = new Map();
   Object.keys(EXAMS).forEach((examId) => {
-    for (let qno = 1; qno <= QUESTION_COUNT; qno += 1) {
+    for (let qno = 1; qno <= questionCount(examId); qno += 1) {
       misses.set(`${examId}__${qno}`, { examId, qno, count: 0 });
     }
   });
@@ -1103,7 +1129,7 @@ function getTopMisses(attempts, limit = 10) {
 function renderMissDashboard(attempts) {
   const misses = new Map();
   Object.keys(EXAMS).forEach((examId) => {
-    for (let qno = 1; qno <= QUESTION_COUNT; qno += 1) {
+    for (let qno = 1; qno <= questionCount(examId); qno += 1) {
       misses.set(`${examId}__${qno}`, { examId, qno, count: 0 });
     }
   });
@@ -1248,7 +1274,7 @@ $$(".choice-btn").forEach((btn) => {
     }
     state.practiceFeedback = null;
     state.selections[state.current - 1] = choice;
-    if (state.current < QUESTION_COUNT) state.current += 1;
+    if (state.current < questionCount()) state.current += 1;
     renderQuestion();
   });
 });
@@ -1259,7 +1285,7 @@ $("#prevBtn").addEventListener("click", () => {
 });
 
 $("#nextBtn").addEventListener("click", () => {
-  state.current = Math.min(QUESTION_COUNT, state.current + 1);
+  state.current = Math.min(questionCount(), state.current + 1);
   renderQuestion();
 });
 
