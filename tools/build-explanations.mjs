@@ -2,6 +2,7 @@ import fs from "node:fs";
 
 const questionPaths = ["data/question-ocr.json", "data/question-2026-1.json"];
 const sourcePath = "data/woongbo-ocr.json";
+const teacherAnswerPath = "data/teacher-2026-1-answers.json";
 const outputPath = "data/explanations.js";
 
 function readJson(path) {
@@ -17,6 +18,10 @@ const appSource = fs.readFileSync("app.js", "utf8");
 const examsSource = appSource.match(/const EXAMS = (\{[\s\S]*?\n\});/)?.[1];
 if (!examsSource) throw new Error("Could not find EXAMS in app.js");
 const EXAMS = Function(`"use strict"; return (${examsSource});`)();
+const teacherAnswers = readJson(teacherAnswerPath).answers;
+if (JSON.stringify(EXAMS["2026_1"]?.answers) !== JSON.stringify(teacherAnswers)) {
+  throw new Error("2026_1 answers do not match the extracted teacher answer key");
+}
 
 const stopwords = new Set([
   "다음", "가장", "대한", "것은", "것이", "있는", "없는", "아닌", "맞는", "옳은", "설명", "보기",
