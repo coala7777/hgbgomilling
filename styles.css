@@ -421,8 +421,25 @@ input {
 }
 
 .exam-card .exam-access {
-  margin-top: -8px;
+  margin: 10px 0 14px;
   font-size: 14px;
+}
+
+.exam-schedule {
+  display: grid;
+  gap: 6px;
+  margin: -6px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--brand);
+  background: #eef7f4;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.exam-schedule span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .exam-card .exam-access.available {

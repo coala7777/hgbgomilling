@@ -290,6 +290,16 @@ function examAccess(examId, user = state.user, date = new Date()) {
   return { allowed: false, message: `${displayDate} 응시 기간이 종료되었습니다.` };
 }
 
+function examSchedule(exam) {
+  if (!exam?.accessDates) return "";
+  return `
+    <div class="exam-schedule" aria-label="반별 응시일">
+      <span><strong>1학년 2반</strong> 2026.06.23</span>
+      <span><strong>1학년 1반</strong> 2026.06.24</span>
+    </div>
+  `;
+}
+
 function attemptQuestionCount(attempt) {
   return attempt.items?.length || questionCount(attempt.examId) || 60;
 }
@@ -643,6 +653,7 @@ async function renderExamSelect() {
     card.innerHTML = `
       <h3>${exam.title}</h3>
       <p>${exam.answers.length}문항${latest ? ` · 최근 실전 ${latest.score}점` : " · 실전 미응시"}</p>
+      ${examSchedule(exam)}
       ${access.message ? `<p class="exam-access ${access.allowed ? "available" : "unavailable"}">${access.message}</p>` : ""}
       <div class="exam-card-actions">
         ${buttons}
